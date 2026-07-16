@@ -4,7 +4,7 @@ from pathlib import Path
 
 from vaydeer_studio.core.backup import BackupStore
 from vaydeer_studio.core.diff import format_diff, snapshot_diff
-from vaydeer_studio.core.models import AssignmentKind, KeyAssignment, factory_jp1011_profile
+from vaydeer_studio.core.models import AssignmentKind, DeviceInfo, KeyAssignment, Layer, Profile, factory_jp1011_profile
 from vaydeer_studio.core.profiles import ProfileStore, load_profile, save_profile, validate_for_device
 from vaydeer_studio.devices.mock import MockJP1011Transport
 from vaydeer_studio.protocol.client import VaydeerProtocol
@@ -47,8 +47,28 @@ def test_profile_store_round_trip_and_delete(tmp_path: Path) -> None:
     assert [item.id for item in store.list()] == [profile.id]
     assert store.load(profile.id).name == profile.name
     store.set_active(profile.id)
-    assert store.load_active() is not None
-    assert store.load_active().id == profile.id  # type: ignore[union-attr]
+    active_profile = store.load_active()
+    assert active_profile is not None
+    assert active_profile.id == profile.id
     store.delete(profile.id)
     assert store.list() == []
     assert store.load_active() is None
+
+
+def test_profile_snapshot_materializes_missing_keys_as_disabled() -> None:
+    device = DeviceInfo(
+        device_type=1,
+        subtype=4,
+        firmware=(1, 0, 0),
+        bootloader=(0, 1, 0),
+        active_layer=0,
+        layer_count=1,
+        max_layers=1,
+    )
+    profile = Profile(key_count=4, layers=[Layer(index=0, assignments=[])])
+    assert [item.kind for item in profile.to_snapshot(device).layer(0).assignments] == [
+        AssignmentKind.DISABLED,
+        AssignmentKind.DISABLED,
+        AssignmentKind.DISABLED,
+        AssignmentKind.DISABLED,
+    ]

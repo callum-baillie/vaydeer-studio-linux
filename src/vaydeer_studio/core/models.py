@@ -263,7 +263,13 @@ class Profile(BaseModel):
         return self
 
     def to_snapshot(self, device: DeviceInfo) -> DeviceSnapshot:
-        return DeviceSnapshot(device=device, layers=self.layers)
+        # The writer sends every physical key. Materialize omitted draft entries as
+        # explicit disabled mappings so preview, write, and read-back agree.
+        layers = [
+            layer.model_copy(update={"assignments": [layer.assignment_for(key) for key in range(device.key_count)]})
+            for layer in self.layers
+        ]
+        return DeviceSnapshot(device=device, layers=layers)
 
 
 def factory_jp1011_profile() -> Profile:
