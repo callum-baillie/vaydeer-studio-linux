@@ -32,21 +32,10 @@ Item {
         height: width / 1.07
 
         Rectangle {
-            id: sideProfile
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: topShell.bottom
-            width: topShell.width * 0.88
-            height: Math.max(14, parent.height * 0.16)
-            color: Qt.darker(keypad.bodyColor, 1.32)
-            radius: Math.max(3, height * 0.22)
-            border.color: Qt.darker(keypad.bodyColor, 1.55)
-        }
-
-        Rectangle {
             id: topShell
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width
-            height: parent.height * 0.88
+            height: parent.height
             radius: Math.max(8, width * 0.075)
             color: keypad.bodyColor
             border.width: 1
