@@ -1,0 +1,80 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "vaydeer-studio"
+version = "0.1.0"
+description = "A Linux-first desktop configurator for Vaydeer macro keypads"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "Vaydeer Studio contributors"}]
+keywords = ["vaydeer", "hid", "macro-keypad", "linux", "pyside6"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: X11 Applications :: Qt",
+  "Intended Audience :: End Users/Desktop",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = [
+  "hidapi>=0.14.0",
+  "platformdirs>=4.2.0",
+  "pydantic>=2.7.0",
+  "PySide6>=6.7.0",
+  "PyYAML>=6.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2.1",
+  "mypy>=1.10.0",
+  "pytest>=8.2.0",
+  "pytest-qt>=4.4.0",
+  "ruff>=0.5.0",
+]
+
+[project.scripts]
+vaydeer-studio = "vaydeer_studio.ui.app:main"
+vaydeer-studio-cli = "vaydeer_studio.cli.main:main"
+vaydeer-studiod = "vaydeer_studio.service.daemon:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/vaydeer_studio"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "docs", "packaging", "scripts", "examples", "README.md", "LICENSE", "ATTRIBUTION.md"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+markers = [
+  "hardware: requires an attached Vaydeer device and VAYDEER_HARDWARE_TESTS=1",
+]
+qt_api = "pyside6"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+check_untyped_defs = true
+disallow_untyped_defs = true
+exclude = ["tests"]
+
+[[tool.mypy.overrides]]
+module = ["hid", "yaml", "PySide6.*"]
+ignore_missing_imports = true

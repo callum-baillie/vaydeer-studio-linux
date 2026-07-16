@@ -1,0 +1,44 @@
+# Python and uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Build and packaging output
+build/
+dist/
+*.egg-info/
+AppDir/
+*.AppImage
+*.deb
+
+# Runtime state and user data
+*.log
+*.socket
+runtime/
+backups/
+diagnostics/
+
+# Vendor and reverse-engineering artefacts never belong in this repository
+*.exe
+*.dmg
+*.msi
+*.asar
+*.bin
+*.dll
+*.pdb
+*.7z
+*.pcap
+*.pcapng
+*.idb
+*.i64
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
