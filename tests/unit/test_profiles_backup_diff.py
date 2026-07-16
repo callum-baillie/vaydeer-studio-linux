@@ -12,6 +12,7 @@ from vaydeer_studio.core.models import (
     MacroEventKind,
     MacroStep,
     Profile,
+    ProfileTargetPlatform,
     factory_jp1011_profile,
 )
 from vaydeer_studio.core.profiles import ProfileStore, load_profile, save_profile, validate_for_device
@@ -20,7 +21,9 @@ from vaydeer_studio.protocol.client import VaydeerProtocol
 
 
 def test_profile_json_and_yaml_are_portable(tmp_path: Path) -> None:
-    profile = factory_jp1011_profile()
+    profile = factory_jp1011_profile().model_copy(
+        update={"target_platform": ProfileTargetPlatform.MACOS, "target_application": "Adobe Illustrator"}
+    )
     for suffix in (".json", ".yaml"):
         path = tmp_path / f"profile{suffix}"
         save_profile(profile, path)

@@ -17,8 +17,14 @@ sanitized report.
 Choose a layer, select a key on the physical diagram, choose a stable action
 category, then capture a value from a physical keyboard or enter it manually.
 `A`, `F13`, and `CTRL+ALT+P` are accepted forms and render as readable values.
-Macro recording and manual macro steps remain portable experimental profile
-data until their device payload is independently verified. Select **Preview
+Select **Capture a key** before pressing a computer key. A physical numeric-pad
+digit is stored as `Num 0` through `Num 9`, matching the JP-1011's existing
+virtual-key mappings; a top-row digit remains `0` through `9`. The capture
+message names the resulting explicit device value. While the mapping page is
+open, pressing a physical keypad key selects it in the editor without changing
+the device. Macro recording captures computer-keyboard press/release timing
+and keeps it as portable experimental profile data until its device payload is
+independently verified. It is never sent to the keypad. Select **Preview
 apply** to read the device, create a backup, and populate the diff. In mock
 mode Apply commits and verifies the change. With a physical keypad, copy the
 indicated CLI command and perform the typed terminal confirmation.
@@ -28,7 +34,12 @@ indicated CLI command and perform the typed terminal confirmation.
 Profiles use schema-versioned JSON or YAML. Save to the local profile library,
 duplicate, import, export, or clear a profile from **Profiles**. Imports are
 validated against the connected key count. A profile can contain onboard layers
-and Linux-side bindings without mixing their execution boundary.
+and Linux-side bindings without mixing their execution boundary. Select Linux,
+macOS, or Windows as its target before saving or exporting. The bundled Codex,
+ChatGPT, Photoshop, and Illustrator starters adapt `Ctrl` versus `Meta`
+(Command) shortcuts for the selected target. Only Linux-targeted profiles load
+their host bindings into the Linux user service; macOS and Windows profiles
+remain portable onboard mapping workspaces.
 
 ## Linux bindings
 

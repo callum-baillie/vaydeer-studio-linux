@@ -28,6 +28,8 @@ keeps it open through a small user service.
 - Timestamped open JSON backups, restore staging, dry-run packets, and
   read-back verification.
 - Portable JSON/YAML profiles and an XDG-backed profile library.
+- Platform-targeted presets for Codex, ChatGPT, Photoshop, and Illustrator,
+  with Linux, macOS, and Windows shortcut variants.
 - Linux-side launch, URL, file, directory, command, notification, and script
   bindings handled by `vaydeer-studiod`, with editable press/release triggers
   and a structured argument array. Text injection remains backend-dependent.
@@ -163,6 +165,22 @@ the profile, and let the user service handle the vendor event. Commands use an
 executable plus argument array by default; shell execution requires an explicit
 opt-in. The service currently executes `press` and `release` triggers. These
 actions need Linux and the running service, unlike stable onboard mappings.
+
+## Application presets and portable profiles
+
+The **Profiles** page can start a new JP-1011 profile from Codex, ChatGPT,
+Photoshop, or Illustrator presets. Choose **Linux**, **macOS**, or **Windows**
+before creating it. The primary modifier is written as `Ctrl` for Linux and
+Windows and `Meta` (Command) for macOS, so exported profiles remain explicit
+about their target. These presets contain portable onboard shortcuts only;
+Linux-side actions are enabled and synchronized to `vaydeer-studiod` only for
+profiles whose target is Linux.
+
+On the mapping page, **Capture a key** makes the next computer-keyboard input
+explicit. A numeric keypad `7` is captured as `Num 7`, while the ordinary top
+row digit remains `7`; the capture message shows the stored JP-1011 value.
+While this page is open, pressing a physical keypad key selects that same key
+in the editor without writing or recording a live tester event.
 
 ## Troubleshooting
 

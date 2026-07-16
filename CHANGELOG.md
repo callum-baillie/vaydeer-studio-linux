@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.9 - 2026-07-16
+
+- Preserve numeric keypad input during physical keyboard capture: Qt keypad
+  digits now serialize as `Num 0` through `Num 9`, matching the JP-1011's
+  existing virtual-key mappings instead of changing them to top-row digits.
+- Make key capture an explicit, visible state with a captured-value explanation
+  and a physical-key selection listener while the mapping editor is open.
+- Improve portable macro recording with held-modifier de-duplication and
+  recorded delays. Macros remain profile-only experimental data and are never
+  transmitted to a keypad.
+- Add platform-targeted application presets for Codex, ChatGPT, Photoshop, and
+  Illustrator. Profiles can target Linux, macOS, or Windows; only Linux
+  profiles load Linux-side bindings into the local service.
+
 ## 0.1.8 - 2026-07-16
 
 - Rework on-device mappings around a last-read device baseline, a protected

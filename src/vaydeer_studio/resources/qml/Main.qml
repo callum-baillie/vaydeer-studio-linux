@@ -234,11 +234,8 @@ ApplicationWindow {
                             checked: window.navIndex === index
                             Accessible.name: modelData
                             onClicked: {
-                                const wasTester = window.navIndex === 4
                                 window.navIndex = index
-                                vaydeerBridge.setTesterOpen(index === 4)
-                                if (wasTester && index !== 4)
-                                    vaydeerBridge.setTesterOpen(false)
+                                vaydeerBridge.setActivePage(index)
                             }
                             contentItem: Label {
                                 text: parent.text
@@ -434,6 +431,7 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 SectionTitle { text: "On-device mappings"; hint: "Only documented keyboard, modifier, combination, media, system, and disabled actions can be written to a JP-1011." }
                                 Label { text: "Profile: " + vaydeerBridge.profileName; color: window.muted; font.pixelSize: 12 }
+                                StatusPill { label: vaydeerBridge.profileTargetPlatformLabel; statusColor: window.muted }
                                 StatusPill {
                                     label: vaydeerBridge.dirty ? vaydeerBridge.pendingMappingCount + " pending" : "Matches device"
                                     statusColor: vaydeerBridge.dirty ? window.amber : window.accent
@@ -481,7 +479,7 @@ ApplicationWindow {
                                         spacing: 9
                                         Label {
                                             Layout.fillWidth: true
-                                            text: vaydeerBridge.deviceBaseline + (vaydeerBridge.dirty ? "  |  Refresh keeps the draft until you discard or apply it." : "  |  The workspace shows the device state.")
+                                            text: vaydeerBridge.mappingKeySelectionStatus + "  |  " + vaydeerBridge.deviceBaseline + (vaydeerBridge.dirty ? "  |  Refresh keeps the draft until you discard or apply it." : "  |  The workspace shows the device state.")
                                             color: vaydeerBridge.dirty ? window.amber : window.muted
                                             font.pixelSize: 11
                                             elide: Text.ElideRight
@@ -608,15 +606,9 @@ ApplicationWindow {
                                             TextField {
                                                 id: codeField
                                                 Layout.fillWidth: true
-                                                placeholderText: categoryBox.currentText === "Key combination" ? "Ctrl + Alt + P" : "Choose a value or press a key"
+                                                placeholderText: categoryBox.currentText === "Key combination" ? "Ctrl + Alt + P" : "Choose a value or capture a key"
                                                 selectByMouse: true
-                                                focus: visible
-                                                Keys.onPressed: function(event) {
-                                                    vaydeerBridge.captureKeyInput(event.key, event.modifiers)
-                                                    codeField.text = vaydeerBridge.keyCaptureValue
-                                                    event.accepted = true
-                                                }
-                                                Accessible.name: "Capture a physical keyboard value"
+                                                Accessible.name: "Explicit JP-1011 key value"
                                             }
                                             ComboBox {
                                                 id: valuePicker
@@ -639,7 +631,57 @@ ApplicationWindow {
                                                 }
                                                 Accessible.name: "Choose a standard key value"
                                             }
-                                            Button { text: "Capture"; onClicked: codeField.forceActiveFocus(); Accessible.name: "Capture a value from the physical keyboard" }
+                                            Button {
+                                                text: vaydeerBridge.keyCaptureActive ? "Cancel capture" : "Capture a key"
+                                                onClicked: {
+                                                    if (vaydeerBridge.keyCaptureActive)
+                                                        vaydeerBridge.cancelKeyCapture()
+                                                    else {
+                                                        vaydeerBridge.beginKeyCapture()
+                                                        keyCaptureArea.forceActiveFocus()
+                                                    }
+                                                }
+                                                Accessible.name: vaydeerBridge.keyCaptureActive ? "Cancel keyboard capture" : "Capture a value from the physical keyboard"
+                                            }
+                                        }
+                                        Rectangle {
+                                            id: keyCaptureArea
+                                            visible: ["Keyboard key", "Modifier", "Key combination", "Media", "System control"].indexOf(categoryBox.currentText) !== -1
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: vaydeerBridge.keyCaptureActive ? 48 : 30
+                                            focus: vaydeerBridge.keyCaptureActive
+                                            color: vaydeerBridge.keyCaptureActive ? (window.darkMode ? "#203A3B" : "#D9EEEA") : window.panelRaised
+                                            radius: 4
+                                            border.width: 1
+                                            border.color: vaydeerBridge.keyCaptureActive ? window.accent : window.line
+                                            Keys.onPressed: function(event) {
+                                                if (!vaydeerBridge.keyCaptureActive)
+                                                    return
+                                                vaydeerBridge.captureKeyInput(event.key, event.modifiers)
+                                                codeField.text = vaydeerBridge.keyCaptureValue
+                                                event.accepted = true
+                                            }
+                                            Column {
+                                                anchors.fill: parent
+                                                anchors.margins: 7
+                                                spacing: 2
+                                                Label {
+                                                    width: parent.width
+                                                    text: vaydeerBridge.keyCaptureActive ? "Capturing next keyboard key" : "Key capture"
+                                                    color: vaydeerBridge.keyCaptureActive ? window.ink : window.muted
+                                                    font.bold: vaydeerBridge.keyCaptureActive
+                                                    font.pixelSize: 11
+                                                }
+                                                Label {
+                                                    width: parent.width
+                                                    text: vaydeerBridge.keyCaptureHint
+                                                    color: window.muted
+                                                    font.pixelSize: 10
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+                                            Accessible.name: "Keyboard capture status"
+                                            Accessible.description: vaydeerBridge.keyCaptureHint
                                         }
                                         RowLayout {
                                             visible: categoryBox.currentText === "Key combination"
@@ -664,6 +706,13 @@ ApplicationWindow {
                                             Layout.fillWidth: true
                                             spacing: 6
                                             Label { text: window.actionDataLabel(categoryBox.currentText); color: window.muted; font.pixelSize: 12 }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: "Recorded macros are kept in this portable profile. Their on-device payload is not verified, so they are never sent to the keypad."
+                                                color: window.amber
+                                                wrapMode: Text.WordWrap
+                                                font.pixelSize: 11
+                                            }
                                             TextArea {
                                                 id: macroField
                                                 Layout.fillWidth: true
@@ -675,7 +724,7 @@ ApplicationWindow {
                                             }
                                             RowLayout {
                                                 Layout.fillWidth: true
-                                                Button { text: vaydeerBridge.macroRecording ? "Recording" : "Record"; onClicked: { vaydeerBridge.startMacroRecording(); macroCapture.forceActiveFocus() } Accessible.name: "Start macro recording" }
+                                                Button { text: vaydeerBridge.macroRecording ? "Recording keyboard" : "Record keyboard"; enabled: !vaydeerBridge.macroRecording; onClicked: { vaydeerBridge.startMacroRecording(); macroCapture.forceActiveFocus() } Accessible.name: "Start macro recording from the computer keyboard" }
                                                 Button { text: "Stop"; enabled: vaydeerBridge.macroRecording; onClicked: vaydeerBridge.stopMacroRecording(); Accessible.name: "Stop macro recording" }
                                                 Button { text: "Clear"; onClicked: vaydeerBridge.clearMacroRecording(); Accessible.name: "Clear captured macro steps" }
                                                 Item { Layout.fillWidth: true }
@@ -683,14 +732,28 @@ ApplicationWindow {
                                             Rectangle {
                                                 id: macroCapture
                                                 Layout.fillWidth: true
-                                                Layout.preferredHeight: 30
+                                                Layout.preferredHeight: vaydeerBridge.macroRecording ? 52 : 34
                                                 focus: vaydeerBridge.macroRecording
                                                 color: vaydeerBridge.macroRecording ? (window.darkMode ? "#203A3B" : "#D9EEEA") : window.panelRaised
                                                 radius: 4
                                                 border.color: vaydeerBridge.macroRecording ? window.accent : window.line
                                                 Keys.onPressed: function(event) { vaydeerBridge.recordMacroInput(event.key, event.modifiers, true); event.accepted = true }
                                                 Keys.onReleased: function(event) { vaydeerBridge.recordMacroInput(event.key, event.modifiers, false); event.accepted = true }
-                                                Label { anchors.centerIn: parent; text: vaydeerBridge.macroRecording ? "Keyboard capture is active" : (vaydeerBridge.macroSteps.length ? vaydeerBridge.macroSteps.length + " captured steps" : "Record to capture key events"); color: window.muted; font.pixelSize: 11 }
+                                                Column {
+                                                    anchors.fill: parent
+                                                    anchors.margins: 7
+                                                    spacing: 2
+                                                    Label { width: parent.width; text: vaydeerBridge.macroRecording ? "Recording computer keyboard input" : "Macro recorder"; color: vaydeerBridge.macroRecording ? window.ink : window.muted; font.bold: vaydeerBridge.macroRecording; font.pixelSize: 11 }
+                                                    Label { width: parent.width; text: vaydeerBridge.macroRecording ? "Type the sequence now. Delays of 50 ms or more are preserved." : (vaydeerBridge.macroSteps.length ? vaydeerBridge.macroSteps.length + " captured steps. You can save or clear them." : "Record a keyboard sequence, then save it into the profile."); color: window.muted; font.pixelSize: 10; elide: Text.ElideRight }
+                                                }
+                                            }
+                                            Label {
+                                                visible: vaydeerBridge.macroSteps.length > 0
+                                                Layout.fillWidth: true
+                                                text: "Recorded sequence: " + vaydeerBridge.macroSteps.map(function(step) { return step.label }).join(" -> ")
+                                                color: window.muted
+                                                font.pixelSize: 10
+                                                elide: Text.ElideRight
                                             }
                                         }
                                         TextField {
@@ -712,7 +775,7 @@ ApplicationWindow {
                                         Item { Layout.fillHeight: true }
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            Button { text: "Open bindings"; visible: categoryBox.currentText === "Linux host action"; onClicked: window.navIndex = 2 }
+                                            Button { text: "Open bindings"; visible: categoryBox.currentText === "Linux host action"; onClicked: { window.navIndex = 2; vaydeerBridge.setActivePage(2) } }
                                             Item { Layout.fillWidth: true }
                                             Button { text: "Save to draft"; onClicked: vaydeerBridge.saveKey(categoryBox.currentText, labelField.text, codeField.text, categoryBox.currentText === "Macro" ? macroField.text : detailField.text); Accessible.name: "Save selected key to the on-device mapping draft" }
                                         }
@@ -738,8 +801,17 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 SectionTitle { text: "Linux bindings"; hint: "These actions need the Vaydeer Studio user service. They are intentionally separate from onboard mappings." }
                                 Label { text: "Profile: " + vaydeerBridge.profileName; color: window.muted; font.pixelSize: 12 }
+                                StatusPill { label: vaydeerBridge.profileTargetPlatformLabel; statusColor: vaydeerBridge.profileSupportsLinuxBindings ? window.accent : window.amber }
                                 StatusPill { label: vaydeerBridge.service.running ? "Service running" : "Service stopped"; statusColor: vaydeerBridge.service.running ? window.accent : window.danger }
                                 StatusPill { label: vaydeerBridge.service.startup ? "Starts at login" : "Manual start"; statusColor: vaydeerBridge.service.startup ? window.accent : window.amber }
+                            }
+                            Label {
+                                visible: !vaydeerBridge.profileSupportsLinuxBindings
+                                Layout.fillWidth: true
+                                text: "This profile targets " + vaydeerBridge.profileTargetPlatformLabel + ". It can contain portable on-device mappings, but Linux-side bindings are not loaded into vaydeer-studiod. Select Linux on the Profiles page to edit or run host actions."
+                                color: window.amber
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 11
                             }
                             RowLayout {
                                 Layout.fillWidth: true
@@ -798,6 +870,7 @@ ApplicationWindow {
                                         anchors.margins: 16
                                         spacing: 8
                                         id: bindingForm
+                                        enabled: vaydeerBridge.profileSupportsLinuxBindings
                                         function loadEditor() {
                                             const editor = vaydeerBridge.bindingEditor
                                             bindingAction.currentIndex = Math.max(0, bindingAction.model.indexOf(editor.action))
@@ -926,7 +999,7 @@ ApplicationWindow {
                             }
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 148
+                                Layout.preferredHeight: 218
                                 color: window.panel
                                 radius: 6
                                 border.color: window.line
@@ -938,6 +1011,26 @@ ApplicationWindow {
                                         Layout.fillWidth: true
                                         Label { text: "Profile name"; color: window.muted; font.pixelSize: 12 }
                                         TextField { id: profileNameField; Layout.fillWidth: true; text: vaydeerBridge.profileName; selectByMouse: true; onEditingFinished: vaydeerBridge.renameProfile(text); Accessible.name: "Current profile name" }
+                                        Label { text: "Target"; color: window.muted; font.pixelSize: 12 }
+                                        ComboBox {
+                                            id: profileTargetPlatform
+                                            Layout.preferredWidth: 110
+                                            model: vaydeerBridge.profilePlatforms
+                                            textRole: "label"
+                                            valueRole: "id"
+                                            currentIndex: {
+                                                for (let i = 0; i < model.length; ++i) {
+                                                    if (model[i].id === vaydeerBridge.profileTargetPlatform)
+                                                        return i
+                                                }
+                                                return 0
+                                            }
+                                            onActivated: vaydeerBridge.setProfileTargetPlatform(currentValue)
+                                            Accessible.name: "Profile target operating system"
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
                                         Button { text: "Save local"; onClicked: vaydeerBridge.saveProfile(); Accessible.name: "Save current profile locally" }
                                         Button { text: "New"; onClicked: vaydeerBridge.createProfile(); Accessible.name: "Create new profile" }
                                         Button { text: "Duplicate"; onClicked: vaydeerBridge.duplicateProfile(); Accessible.name: "Duplicate current profile" }
@@ -947,12 +1040,38 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
+                                        Label { text: "Start from preset"; color: window.muted; font.pixelSize: 12 }
+                                        ComboBox {
+                                            id: profilePreset
+                                            Layout.fillWidth: true
+                                            model: vaydeerBridge.profileTemplates
+                                            textRole: "name"
+                                            valueRole: "id"
+                                            Accessible.name: "Application profile preset"
+                                        }
+                                        Label {
+                                            visible: window.width > 1180
+                                            Layout.preferredWidth: 260
+                                            text: profilePreset.currentIndex >= 0 ? vaydeerBridge.profileTemplates[profilePreset.currentIndex].summary : ""
+                                            color: window.muted
+                                            font.pixelSize: 10
+                                            elide: Text.ElideRight
+                                        }
+                                        Button {
+                                            text: "Create preset"
+                                            enabled: profilePreset.currentIndex >= 0
+                                            onClicked: vaydeerBridge.createProfileFromTemplate(profilePreset.currentValue, profileTargetPlatform.currentValue)
+                                            Accessible.name: "Create profile from application preset"
+                                        }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
                                         TextField { id: importProfilePath; Layout.fillWidth: true; placeholderText: "Profile JSON or YAML path"; selectByMouse: true; Accessible.name: "Profile import path" }
                                         Button { text: "Import"; onClicked: vaydeerBridge.importProfile(importProfilePath.text); Accessible.name: "Import profile" }
                                         Button { text: vaydeerBridge.dirty ? "Refresh device baseline" : "Read device"; onClicked: vaydeerBridge.readFromDevice(); Accessible.name: "Read device profile without overwriting pending mappings" }
                                         Button { text: "Use device state"; enabled: vaydeerBridge.dirty; onClicked: vaydeerBridge.discardChanges(); Accessible.name: "Discard pending mappings and use device state" }
                                     }
-                                    Label { text: vaydeerBridge.profileOrigin + "  |  " + vaydeerBridge.deviceBaseline + (vaydeerBridge.dirty ? "  |  Device refresh preserves pending changes." : ""); color: vaydeerBridge.dirty ? window.amber : window.muted; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    Label { text: vaydeerBridge.profileOrigin + "  |  Target: " + vaydeerBridge.profileTargetPlatformLabel + "  |  App: " + vaydeerBridge.profileTargetApplication + "  |  " + vaydeerBridge.deviceBaseline + (vaydeerBridge.dirty ? "  |  Device refresh preserves pending changes." : ""); color: vaydeerBridge.dirty ? window.amber : window.muted; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
                                 }
                             }
                             GridLayout {
@@ -961,7 +1080,7 @@ ApplicationWindow {
                                 rowSpacing: 12
                                 columnSpacing: 12
                                 Repeater {
-                                    model: [["Device baseline", "JP-1011 / " + vaydeerBridge.keys.length + " keys"], ["Layers", vaydeerBridge.layers.length + " configured"], ["Linux-side actions", vaydeerBridge.bindings.length + " bindings"]]
+                                    model: [["Device baseline", "JP-1011 / " + vaydeerBridge.keys.length + " keys"], ["Layers", vaydeerBridge.layers.length + " configured"], ["Target", vaydeerBridge.profileTargetPlatformLabel + " / " + vaydeerBridge.profileTargetApplication]]
                                     delegate: Rectangle {
                                         required property var modelData
                                         Layout.fillWidth: true
@@ -1048,7 +1167,7 @@ ApplicationWindow {
                                                         Layout.fillWidth: true
                                                         spacing: 1
                                                         Label { text: modelData.name; color: window.ink; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
-                                                        Label { text: modelData.layers + " layers  |  " + modelData.bindings + " bindings  |  " + modelData.updated; color: window.muted; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
+                                                        Label { text: modelData.platform + " / " + modelData.application + "  |  " + modelData.layers + " layers  |  " + modelData.bindings + " bindings  |  " + modelData.updated; color: window.muted; font.pixelSize: 10; elide: Text.ElideRight; Layout.fillWidth: true }
                                                     }
                                                     StatusPill { visible: modelData.active; label: "Current"; statusColor: window.accent }
                                                 }

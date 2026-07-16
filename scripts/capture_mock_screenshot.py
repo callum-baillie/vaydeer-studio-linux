@@ -48,7 +48,7 @@ def main() -> int:
     if args.pending_key is not None:
         controller.selectKey(args.pending_key)
         controller.saveKey("Keyboard key", "Draft", "F13")
-    controller.setTesterOpen(args.page == 4)
+    controller.setActivePage(args.page)
 
     def capture() -> None:
         image = application.primaryScreen().grabWindow(window.winId())

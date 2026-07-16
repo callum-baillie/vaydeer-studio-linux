@@ -56,6 +56,14 @@ class TriggerKind(StrEnum):
     CHORD = "chord"
 
 
+class ProfileTargetPlatform(StrEnum):
+    """Operating system a portable profile is intended to run on."""
+
+    LINUX = "linux"
+    MACOS = "macos"
+    WINDOWS = "windows"
+
+
 class MacroEventKind(StrEnum):
     """Portable macro events retained in profiles until the device codec is known."""
 
@@ -287,11 +295,13 @@ class LinuxBinding(BaseModel):
 class Profile(BaseModel):
     """Portable profile schema for device mappings and Linux-side bindings."""
 
-    schema_version: Annotated[int, Field(ge=1)] = 1
+    schema_version: Annotated[int, Field(ge=1)] = 2
     id: str = Field(default_factory=lambda: str(uuid4()))
     name: str = Field(default="Untitled profile", min_length=1, max_length=64)
     device_model: str = "JP-1011"
     key_count: int = Field(default=9, ge=1, le=255)
+    target_platform: ProfileTargetPlatform = ProfileTargetPlatform.LINUX
+    target_application: str | None = Field(default=None, max_length=64)
     layers: list[Layer] = Field(default_factory=list)
     linux_bindings: list[LinuxBinding] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

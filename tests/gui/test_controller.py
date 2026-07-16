@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from subprocess import CompletedProcess
 
+from PySide6.QtCore import Qt
+
 from vaydeer_studio.core.errors import DeviceError
 from vaydeer_studio.core.models import AssignmentKind, SupportLevel
 from vaydeer_studio.core.profiles import load_profile
@@ -146,6 +148,52 @@ def test_all_editor_action_categories_create_a_safe_profile_assignment() -> None
 
     controller.saveKey("Macro", "Macro", "", "Ctrl+C; Wait 120; Ctrl+V")
     assert controller.profile.layers[0].assignment_for(0).kind == AssignmentKind.MACRO
+
+
+def test_controller_keeps_numeric_keypad_capture_distinct_from_top_row_digits() -> None:
+    controller = StudioController(mock=True)
+
+    controller.beginKeyCapture()
+    controller.captureKeyInput(int(Qt.Key.Key_7), Qt.KeyboardModifier.KeypadModifier.value)
+
+    assert controller.keyCaptureValue == "Num 7"
+    assert "numeric keypad 7" in controller.keyCaptureHint
+    assert controller.keyCaptureActive is False
+
+    controller.beginKeyCapture()
+    controller.captureKeyInput(int(Qt.Key.Key_7), 0)
+
+    assert controller.keyCaptureValue == "7"
+    assert "explicit JP-1011" in controller.keyCaptureHint
+
+
+def test_macro_recording_deduplicates_held_modifiers() -> None:
+    controller = StudioController(mock=True)
+    controller.startMacroRecording()
+
+    controller.recordMacroInput(int(Qt.Key.Key_Control), 0, True)
+    controller.recordMacroInput(int(Qt.Key.Key_C), Qt.KeyboardModifier.ControlModifier.value, True)
+    controller.recordMacroInput(int(Qt.Key.Key_C), Qt.KeyboardModifier.ControlModifier.value, False)
+    controller.recordMacroInput(int(Qt.Key.Key_Control), 0, False)
+
+    assert [step.display_name for step in controller._macro_steps] == [
+        "Press Ctrl",
+        "Press C",
+        "Release C",
+        "Release Ctrl",
+    ]
+
+
+def test_controller_creates_platform_targeted_application_presets() -> None:
+    controller = StudioController(mock=True)
+
+    controller.createProfileFromTemplate("photoshop", "windows")
+
+    assert controller.profileOrigin == "Application preset"
+    assert controller.profileTargetPlatform == "windows"
+    assert controller.profileTargetApplication == "Adobe Photoshop"
+    assert controller.profileSupportsLinuxBindings is False
+    assert controller.profile.layers[0].assignment_for(5).key_codes == [17, ord("S")]
 
 
 def test_controller_edits_linux_bindings_and_rejects_unimplemented_triggers() -> None:
@@ -441,4 +489,50 @@ def test_real_controller_relays_tester_events_from_service(monkeypatch) -> None:
     }
     controller.setTesterOpen(False)
     assert controller.testerEvents == []
+    assert [item["method"] for item in calls] == ["status", "set_tester", "drain_tester_events", "set_tester"]
+
+
+def test_mapping_page_selects_the_pressed_physical_key_without_recording_tester_events(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    responses = iter(
+        [
+            {"ok": True, "result": {"keepalive": {"state": "active_readonly"}}},
+            {"ok": True, "result": {"keepalive": {"state": "active_readonly"}, "tester_active": True}},
+            {
+                "ok": True,
+                "result": {
+                    "keepalive": {"state": "active_readonly"},
+                    "events": [
+                        {
+                            "timestamp": "12:34:56.789",
+                            "key_index": 7,
+                            "layer_index": 0,
+                            "pressed": True,
+                            "raw": "fb 03 00 07 00 ff",
+                        }
+                    ],
+                },
+            },
+            {"ok": True, "result": {"keepalive": {"state": "active_readonly"}, "tester_active": False}},
+        ]
+    )
+    monkeypatch.setattr(controller_module, "discover_linux_hidraw", lambda: _interfaces("1-2:1.0"))
+    monkeypatch.setattr(controller_module, "open_command_transport", lambda _path: MockJP1011Transport())
+
+    def service_request(_path, payload):
+        calls.append(payload)
+        return next(responses)
+
+    monkeypatch.setattr(controller_module, "service_request", service_request)
+    controller = StudioController(mock=False)
+    _stop_controller_timers(controller)
+
+    controller.setMappingKeySelectionActive(True)
+    controller._poll_tester_events()
+
+    assert controller.selectedKey["index"] == 7
+    assert controller.testerEvents == []
+    assert "Selected K8" in controller.statusMessage
+
+    controller.setMappingKeySelectionActive(False)
     assert [item["method"] for item in calls] == ["status", "set_tester", "drain_tester_events", "set_tester"]

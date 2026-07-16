@@ -33,6 +33,19 @@ editing and removal available from the action list. Vaydeer Studio therefore
 uses a selected binding editor instead of an append-only form. Source:
 [Creating Smart Actions](https://support.logi.com/hc/en-001/articles/14307858722327-How-to-create-a-new-Smart-Actions-on-Logi-Options), retrieved 2026-07-16.
 
+The ChatGPT web experience documents `Ctrl+K` on Windows/Linux and `Cmd+K` on
+macOS for chat-history search. The ChatGPT preset uses that documented action
+and otherwise limits itself to universal browser navigation rather than
+claiming undocumented product commands. Source: [OpenAI Help: Search chat
+history](https://help.openai.com/en/articles/10056348), retrieved 2026-07-16.
+
+Adobe's shortcut references confirm the Photoshop undo/redo modifiers and the
+Illustrator tool-key set used by the bundled presets. Sources: [Photoshop undo
+and redo](https://helpx.adobe.com/photoshop/desktop/get-started/set-up-toolbars-panels/use-undo-redo-commands.html)
+and [Illustrator default keyboard
+shortcuts](https://helpx.adobe.com/ca/illustrator/using/default-keyboard-shortcuts.html),
+retrieved 2026-07-16.
+
 ## On-Device Mappings
 
 ### Page Structure
@@ -60,10 +73,14 @@ kept and re-compared against the newly read baseline. `Use device state` or
 ### Value Entry
 
 Keyboard, modifier, shortcut, and media actions provide readable choices and a
-keyboard-capture control. Shortcut editing adds explicit modifier controls and
-a primary-key chooser while retaining text entry for advanced values. Labels
-are optional and only affect the keypad legend; the selected key value is the
-actual on-device behavior.
+keyboard-capture control. Capture is an explicit armed state with a clear
+result message: numeric keypad digits are stored as `Num 0` through `Num 9`,
+while top-row digits remain their ordinary values. Shortcut editing adds
+explicit modifier controls and a primary-key chooser while retaining text entry
+for advanced values. Labels are optional and only affect the keypad legend; the
+selected key value is the actual on-device behavior. While this page is open,
+physical keypad presses select their corresponding editor key without creating
+a tester log or changing the device.
 
 Unvalidated vendor payload categories remain distinct from supported mapping
 types and must not be represented as writable hardware actions.
@@ -103,6 +120,20 @@ layers, and Linux bindings. The profile page presents:
 - device key-count, layer-count, and binding-count compatibility context, and
 - saved-profile metadata including layers, bindings, last update, and current
   selection.
+
+Each profile declares its target operating system: Linux, macOS, or Windows.
+The target changes only portable shortcut encoding (`Ctrl` versus Command/
+`Meta`) and never changes a connected device automatically. Bundled presets
+for Codex, ChatGPT, Photoshop, and Illustrator create a nine-key mapping
+starter with a reviewable target. Linux-side bindings are only synchronized to
+`vaydeer-studiod` for Linux-targeted profiles. This prevents a profile prepared
+for another operating system from accidentally acquiring host-specific behavior
+on the Linux machine where it is edited.
+
+Recorded macros retain typed press, release, and meaningful timing steps in the
+portable profile. Their vendor encoding remains unknown, so the editor makes
+their experimental/profile-only state visible and the safety layer refuses to
+send them to a physical keypad.
 
 Saving a profile is local and synchronizes its Linux bindings to the service
 when reachable. It never writes to the keypad. Applying on-device mappings

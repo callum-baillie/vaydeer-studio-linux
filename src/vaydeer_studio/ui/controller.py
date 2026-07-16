@@ -32,12 +32,14 @@ from vaydeer_studio.core.models import (
     MacroEventKind,
     MacroStep,
     Profile,
+    ProfileTargetPlatform,
     SupportLevel,
     TriggerKind,
     factory_jp1011_profile,
 )
 from vaydeer_studio.core.profiles import ProfileStore, load_profile, save_profile
 from vaydeer_studio.core.safety import ApplyPreview, apply_prepared, prepare_apply
+from vaydeer_studio.core.templates import create_profile_from_template, profile_template_summaries
 from vaydeer_studio.devices.capabilities import capability_for
 from vaydeer_studio.devices.diagnostics import collect_diagnostics, render_report
 from vaydeer_studio.devices.discovery import discover_linux_hidraw, select_command_interface
@@ -62,6 +64,7 @@ _QT_KEY_A = int(Qt.Key.Key_A)
 _QT_KEY_Z = int(Qt.Key.Key_Z)
 _QT_KEY_0 = int(Qt.Key.Key_0)
 _QT_KEY_9 = int(Qt.Key.Key_9)
+_QT_KEYPAD_MODIFIER = Qt.KeyboardModifier.KeypadModifier.value
 _QT_TO_VAYDEER_CODES = {
     int(Qt.Key.Key_Backspace): 8,
     int(Qt.Key.Key_Tab): 9,
@@ -163,14 +166,19 @@ class StudioController(QObject):
             self._diagnostic_summary = "Mock JP-1011 diagnostics are ready; no physical HID device was opened."
         self._preview: ApplyPreview | None = None
         self._tester_open = False
+        self._mapping_key_selection_active = False
         self._tester_events: list[dict[str, str | int]] = []
         self._tester_pressed_keys: set[int] = set()
         self._tester_press_started: dict[int, float] = {}
         self._tester_press_generations: dict[int, int] = {}
         self._tester_status = "Open the tester to begin listening for vendor events."
         self._captured_key_value = ""
+        self._key_capture_active = False
+        self._key_capture_hint = "Choose a value or start capture to record one explicit keyboard key."
         self._macro_recording = False
         self._macro_steps: list[MacroStep] = []
+        self._macro_held_codes: set[int] = set()
+        self._macro_last_input_at: float | None = None
         self.executor = BindingExecutor(mock_mode=mock)
         if not mock and QGuiApplication.instance() is not None:
             self._connection_timer = QTimer(self)
@@ -462,12 +470,13 @@ class StudioController(QObject):
     def _sync_service_bindings(self) -> None:
         if self.mock:
             return
+        bindings = self.profile.linux_bindings if self.profileSupportsLinuxBindings else []
         try:
             service_request(
                 default_socket_path(),
                 {
                     "method": "set_bindings",
-                    "bindings": [item.model_dump(mode="json") for item in self.profile.linux_bindings],
+                    "bindings": [item.model_dump(mode="json") for item in bindings],
                 },
             )
             self._refresh_service_status()
@@ -683,6 +692,38 @@ class StudioController(QObject):
     def profileOrigin(self) -> str:
         return self._profile_origin
 
+    @Property(str, notify=changed)
+    def profileTargetPlatform(self) -> str:
+        return self.profile.target_platform.value
+
+    @Property(str, notify=changed)
+    def profileTargetPlatformLabel(self) -> str:
+        return {
+            ProfileTargetPlatform.LINUX: "Linux",
+            ProfileTargetPlatform.MACOS: "macOS",
+            ProfileTargetPlatform.WINDOWS: "Windows",
+        }[self.profile.target_platform]
+
+    @Property(str, notify=changed)
+    def profileTargetApplication(self) -> str:
+        return self.profile.target_application or "General"
+
+    @Property(bool, notify=changed)
+    def profileSupportsLinuxBindings(self) -> bool:
+        return self.profile.target_platform == ProfileTargetPlatform.LINUX
+
+    @Property(list, constant=True)
+    def profilePlatforms(self) -> list[dict[str, str]]:
+        return [
+            {"id": ProfileTargetPlatform.LINUX.value, "label": "Linux"},
+            {"id": ProfileTargetPlatform.MACOS.value, "label": "macOS"},
+            {"id": ProfileTargetPlatform.WINDOWS.value, "label": "Windows"},
+        ]
+
+    @Property(list, constant=True)
+    def profileTemplates(self) -> list[dict[str, str]]:
+        return profile_template_summaries()
+
     @Property(bool, notify=changed)
     def profileDirty(self) -> bool:
         return self._saved_profile is None or self.profile != self._saved_profile
@@ -712,6 +753,22 @@ class StudioController(QObject):
     @Property(str, notify=selectedKeyChanged)
     def keyCaptureValue(self) -> str:
         return self._captured_key_value
+
+    @Property(bool, notify=selectedKeyChanged)
+    def keyCaptureActive(self) -> bool:
+        return self._key_capture_active
+
+    @Property(str, notify=selectedKeyChanged)
+    def keyCaptureHint(self) -> str:
+        return self._key_capture_hint
+
+    @Property(str, notify=changed)
+    def mappingKeySelectionStatus(self) -> str:
+        if self.mock:
+            return "Click a key in the layout to select it."
+        if self._mapping_key_selection_active:
+            return "Press a physical keypad key to select it in this editor."
+        return "Open On-device mappings to select keys from the physical keypad."
 
     @Property(bool, notify=selectedKeyChanged)
     def macroRecording(self) -> bool:
@@ -786,6 +843,8 @@ class StudioController(QObject):
                 "name": item.name,
                 "layers": str(len(item.layers)),
                 "bindings": str(len(item.linux_bindings)),
+                "platform": self._platform_label(item.target_platform),
+                "application": item.target_application or "General",
                 "updated": item.updated_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC"),
                 "active": item.id == self.profile.id,
             }
@@ -800,9 +859,13 @@ class StudioController(QObject):
     def selectKey(self, index: int) -> None:
         self._selected_key = index
         self._captured_key_value = ""
+        self._key_capture_active = False
+        self._key_capture_hint = "Choose a value or start capture to record one explicit keyboard key."
         assignment = self._current_layer().assignment_for(index)
         self._macro_steps = list(assignment.macro_steps)
         self._macro_recording = False
+        self._macro_held_codes.clear()
+        self._macro_last_input_at = None
         self.selectedKeyChanged.emit()
         self.changed.emit()
 
@@ -814,6 +877,10 @@ class StudioController(QObject):
         assignment = self._current_layer().assignment_for(self._selected_key)
         self._macro_steps = list(assignment.macro_steps)
         self._macro_recording = False
+        self._macro_held_codes.clear()
+        self._macro_last_input_at = None
+        self._key_capture_active = False
+        self._key_capture_hint = "Choose a value or start capture to record one explicit keyboard key."
         self.changed.emit()
         self.selectedKeyChanged.emit()
 
@@ -848,6 +915,9 @@ class StudioController(QObject):
             self._replace_layer(layer)
             self._macro_steps = list(macro_steps)
             self._macro_recording = False
+            self._macro_held_codes.clear()
+            self._macro_last_input_at = None
+            self._key_capture_active = False
             self._status = f"Key {self._selected_key + 1} updated in profile"
             self.changed.emit()
             self.selectedKeyChanged.emit()
@@ -856,6 +926,21 @@ class StudioController(QObject):
             self._status = f"Could not update key: {error}"
             self.statusChanged.emit()
 
+    @Slot()
+    def beginKeyCapture(self) -> None:
+        self._key_capture_active = True
+        self._captured_key_value = ""
+        self._key_capture_hint = (
+            "Listening now. Press one key on your keyboard; numeric keypad digits stay as Num 0 through Num 9."
+        )
+        self.selectedKeyChanged.emit()
+
+    @Slot()
+    def cancelKeyCapture(self) -> None:
+        self._key_capture_active = False
+        self._key_capture_hint = "Capture cancelled. You can type a value or choose a standard key."
+        self.selectedKeyChanged.emit()
+
     @Slot(int, int)
     def captureKeyInput(self, key: int, modifiers: int) -> None:
         """Populate the editor with a value captured from the physical keyboard."""
@@ -863,10 +948,14 @@ class StudioController(QObject):
         try:
             codes = self._codes_from_qt(key, modifiers)
             self._captured_key_value = display_key_codes(codes)
+            self._key_capture_active = False
+            self._key_capture_hint = self._capture_description(codes, modifiers)
             self.selectedKeyChanged.emit()
         except ValueError as error:
             self._status = f"That key cannot be represented by the JP-1011 protocol: {error}"
+            self._key_capture_hint = "That key is not supported by the documented JP-1011 mapping protocol."
             self.statusChanged.emit()
+            self.selectedKeyChanged.emit()
 
     @Slot(str, result=list)
     def keyChoices(self, category: str) -> list[str]:
@@ -908,13 +997,17 @@ class StudioController(QObject):
     def startMacroRecording(self) -> None:
         self._macro_steps = []
         self._macro_recording = True
-        self._status = "Macro recording is armed. Use the focused capture area, then stop recording."
+        self._macro_held_codes.clear()
+        self._macro_last_input_at = None
+        self._status = "Macro recording is armed. Type in the focused capture area, then stop recording."
         self.selectedKeyChanged.emit()
         self.statusChanged.emit()
 
     @Slot()
     def stopMacroRecording(self) -> None:
         self._macro_recording = False
+        self._macro_held_codes.clear()
+        self._macro_last_input_at = None
         self._status = f"Captured {len(self._macro_steps)} macro step(s)"
         self.selectedKeyChanged.emit()
         self.statusChanged.emit()
@@ -923,6 +1016,8 @@ class StudioController(QObject):
     def clearMacroRecording(self) -> None:
         self._macro_steps = []
         self._macro_recording = False
+        self._macro_held_codes.clear()
+        self._macro_last_input_at = None
         self.selectedKeyChanged.emit()
 
     @Slot(int, int, bool)
@@ -935,12 +1030,22 @@ class StudioController(QObject):
             codes = self._codes_from_qt(key, modifiers)
         except ValueError:
             return
+        now = monotonic()
+        if pressed and self._macro_last_input_at is not None:
+            delay_ms = int((now - self._macro_last_input_at) * 1_000)
+            if delay_ms >= 50:
+                self._macro_steps.append(MacroStep(event=MacroEventKind.DELAY, delay_ms=min(delay_ms, 60_000)))
         if pressed:
-            self._macro_steps.extend(MacroStep(event=MacroEventKind.PRESS, key_code=code) for code in codes)
+            for code in codes:
+                if code not in self._macro_held_codes:
+                    self._macro_steps.append(MacroStep(event=MacroEventKind.PRESS, key_code=code))
+                    self._macro_held_codes.add(code)
         else:
-            self._macro_steps.extend(
-                MacroStep(event=MacroEventKind.RELEASE, key_code=code) for code in reversed(codes)
-            )
+            primary = codes[-1]
+            if primary in self._macro_held_codes:
+                self._macro_steps.append(MacroStep(event=MacroEventKind.RELEASE, key_code=primary))
+                self._macro_held_codes.discard(primary)
+        self._macro_last_input_at = now
         self.selectedKeyChanged.emit()
 
     @Slot()
@@ -1269,6 +1374,11 @@ class StudioController(QObject):
         replace_selected: bool,
     ) -> None:
         try:
+            if not self.profileSupportsLinuxBindings:
+                raise ValueError(
+                    f"This profile targets {self.profileTargetPlatformLabel}; Linux-side bindings are available only "
+                    "for Linux profiles"
+                )
             trigger_kind = TriggerKind(trigger)
             if trigger_kind not in {TriggerKind.PRESS, TriggerKind.RELEASE}:
                 raise ValueError("Only Press and Release triggers are implemented by the Linux service")
@@ -1375,6 +1485,52 @@ class StudioController(QObject):
         self.statusChanged.emit()
 
     @Slot(str)
+    def setProfileTargetPlatform(self, platform: str) -> None:
+        try:
+            target = ProfileTargetPlatform(platform)
+        except ValueError:
+            self._status = f"Unknown profile target platform: {platform}"
+            self.statusChanged.emit()
+            return
+        if target == self.profile.target_platform:
+            return
+        self.profile = self.profile.model_copy(update={"target_platform": target, "updated_at": datetime.now(UTC)})
+        self._sync_service_bindings()
+        if target == ProfileTargetPlatform.LINUX:
+            self._status = "Profile targets Linux; its Linux-side bindings can run through the local service"
+        else:
+            self._status = (
+                f"Profile targets {self._platform_label(target)}; Linux-side bindings are retained but not loaded "
+                "into this Linux service"
+            )
+        self.changed.emit()
+        self.statusChanged.emit()
+
+    @Slot(str, str)
+    def createProfileFromTemplate(self, template_id: str, platform: str) -> None:
+        try:
+            target = ProfileTargetPlatform(platform)
+            self.profile = create_profile_from_template(template_id, target)
+            self._saved_profile = None
+            self._profile_origin = "Application preset"
+            self._selected_key = 0
+            self._selected_layer = self.profile.layers[0].index
+            self._selected_binding_index = -1
+            self._macro_steps = []
+            self._macro_recording = False
+            self._macro_held_codes.clear()
+            self._macro_last_input_at = None
+            self._sync_service_bindings()
+            self._status = (
+                f"Created {self.profile.name!r}. Review its mappings before applying them to a device."
+            )
+            self.changed.emit()
+            self.selectedKeyChanged.emit()
+        except Exception as error:
+            self._status = f"Could not create profile preset: {error}"
+        self.statusChanged.emit()
+
+    @Slot(str)
     def renameProfile(self, name: str) -> None:
         if name.strip():
             self.profile = self.profile.model_copy(update={"name": name.strip(), "updated_at": datetime.now(UTC)})
@@ -1466,26 +1622,44 @@ class StudioController(QObject):
         self._status = f"Profile exported to {path}"
         self.statusChanged.emit()
 
+    @Slot(int)
+    def setActivePage(self, index: int) -> None:
+        """Align vendor-event listening with the visible screen in one transition."""
+
+        self._set_event_listener_mode(tester_open=index == 4, mapping_selection_open=index == 1)
+
     @Slot(bool)
     def setTesterOpen(self, opened: bool) -> None:
-        self._tester_open = opened
+        self._set_event_listener_mode(tester_open=opened, mapping_selection_open=self._mapping_key_selection_active)
+
+    @Slot(bool)
+    def setMappingKeySelectionActive(self, opened: bool) -> None:
+        self._set_event_listener_mode(tester_open=self._tester_open, mapping_selection_open=opened)
+
+    def _set_event_listener_mode(self, *, tester_open: bool, mapping_selection_open: bool) -> None:
+        previous_tester_open = self._tester_open
+        self._tester_open = tester_open
+        self._mapping_key_selection_active = mapping_selection_open
+        active = tester_open or mapping_selection_open
         if self.mock:
-            self._tester_status = "Click a keypad button to generate mock press and release reports."
-        elif opened:
+            if tester_open:
+                self._tester_status = "Click a keypad button to generate mock press and release reports."
+        elif active:
             self._set_service_tester(True)
-            if self._tester_timer is not None:
+            if self._tester_timer is not None and not self._tester_timer.isActive():
                 self._tester_timer.start()
         else:
-            if self._tester_timer is not None:
+            if self._tester_timer is not None and self._tester_timer.isActive():
                 self._tester_timer.stop()
             self._set_service_tester(False)
             self._tester_status = "Tester closed; vendor events are no longer recorded for this screen."
-        if not opened:
+        if previous_tester_open and not tester_open:
             self._tester_events = []
             self._tester_pressed_keys.clear()
             self._tester_press_started.clear()
             self._tester_press_generations.clear()
         self.testerChanged.emit()
+        self.changed.emit()
 
     def _set_service_tester(self, enabled: bool) -> None:
         try:
@@ -1507,7 +1681,7 @@ class StudioController(QObject):
         self.changed.emit()
 
     def _poll_tester_events(self) -> None:
-        if self.mock or not self._tester_open:
+        if self.mock or not (self._tester_open or self._mapping_key_selection_active):
             return
         try:
             response = service_request(default_socket_path(), {"method": "drain_tester_events"})
@@ -1522,15 +1696,29 @@ class StudioController(QObject):
                     key_index = item.get("key_index")
                     layer_index = item.get("layer_index")
                     pressed = item.get("pressed")
-                    self._append_tester_event(
-                        key_index=key_index if isinstance(key_index, int) else None,
-                        layer_index=layer_index if isinstance(layer_index, int) else None,
-                        pressed=pressed if isinstance(pressed, bool) else None,
-                        timestamp=str(item.get("timestamp", "")),
-                        raw=str(item.get("raw", "")),
-                    )
-                self._tester_status = "Receiving vendor key events."
-                self.testerChanged.emit()
+                    valid_key_index = key_index if isinstance(key_index, int) else None
+                    valid_layer_index = layer_index if isinstance(layer_index, int) else None
+                    valid_pressed = pressed if isinstance(pressed, bool) else None
+                    if (
+                        self._mapping_key_selection_active
+                        and valid_pressed is True
+                        and valid_key_index is not None
+                        and 0 <= valid_key_index < self._snapshot.device.key_count
+                    ):
+                        self.selectKey(valid_key_index)
+                        self._status = f"Selected K{valid_key_index + 1} from a physical keypad press"
+                        self.statusChanged.emit()
+                    if self._tester_open:
+                        self._append_tester_event(
+                            key_index=valid_key_index,
+                            layer_index=valid_layer_index,
+                            pressed=valid_pressed,
+                            timestamp=str(item.get("timestamp", "")),
+                            raw=str(item.get("raw", "")),
+                        )
+                if self._tester_open:
+                    self._tester_status = "Receiving vendor key events."
+                    self.testerChanged.emit()
             self.changed.emit()
         except OSError as error:
             self._tester_status = f"Live event service unavailable: {error}"
@@ -1694,7 +1882,12 @@ class StudioController(QObject):
         """Translate a Qt key event into the byte values used by profiles."""
 
         primary: int | None
-        if _QT_KEY_A <= key <= _QT_KEY_Z or _QT_KEY_0 <= key <= _QT_KEY_9:
+        if _QT_KEY_0 <= key <= _QT_KEY_9 and modifiers & _QT_KEYPAD_MODIFIER:
+            # Qt reports both the top-row and numeric-pad digits as Key_0..Key_9.
+            # The modifier is the only reliable distinction, and Vaydeer's byte
+            # protocol stores them as the virtual-key NUMPAD0..NUMPAD9 range.
+            primary = 96 + (key - _QT_KEY_0)
+        elif _QT_KEY_A <= key <= _QT_KEY_Z or _QT_KEY_0 <= key <= _QT_KEY_9:
             primary = ord(chr(key))
         elif _QT_KEY_F1 <= key <= _QT_KEY_F24:
             primary = 112 + (key - _QT_KEY_F1)
@@ -1704,6 +1897,22 @@ class StudioController(QObject):
             raise ValueError(f"Qt key {key}")
         modifier_codes = [code for mask, code in _QT_MODIFIER_CODES if modifiers & mask and code != primary]
         return [*modifier_codes, primary]
+
+    @staticmethod
+    def _capture_description(codes: list[int], modifiers: int) -> str:
+        value = display_key_codes(codes)
+        primary = codes[-1]
+        if 96 <= primary <= 105 and modifiers & _QT_KEYPAD_MODIFIER:
+            return f"Captured numeric keypad {primary - 96} as {value} (Vaydeer code {primary})."
+        return f"Captured {value} as the explicit JP-1011 key value."
+
+    @staticmethod
+    def _platform_label(platform: ProfileTargetPlatform) -> str:
+        return {
+            ProfileTargetPlatform.LINUX: "Linux",
+            ProfileTargetPlatform.MACOS: "macOS",
+            ProfileTargetPlatform.WINDOWS: "Windows",
+        }[platform]
 
     @staticmethod
     def _parse_macro_spec(text: str) -> list[MacroStep]:
