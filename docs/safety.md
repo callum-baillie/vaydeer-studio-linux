@@ -14,6 +14,8 @@ protocol boundary.
   serialized for physical hardware.
 - The keepalive opens only the dynamically matched vendor event interface with
   `O_RDONLY | O_CLOEXEC`; it never writes to it.
+- A reconnect is identified by the selected sysfs HID instance as well as the
+  hidraw node, so reusing a node name cannot retain a stale keepalive handle.
 
 ## Write sequence
 

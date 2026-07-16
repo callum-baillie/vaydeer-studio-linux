@@ -6,6 +6,11 @@ firmware `1.0.2`, bootloader `0.2.1`, nine keys, six maximum layers, event
 reports, disconnect/reconnect behavior, permission failures, checksum errors,
 and partial writes.
 
+Discovery tests also cover hidapi entries with missing usage metadata, sysfs
+descriptor fallback, startup races, permission and protocol failures, unplug
+state transitions, changed hidraw nodes, and kernel reuse of the same hidraw
+node after reconnect.
+
 Run the UI without hardware using `uv run vaydeer-studio --mock jp1011`. For a
 headless QML smoke test use:
 

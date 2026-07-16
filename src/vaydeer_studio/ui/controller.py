@@ -40,6 +40,7 @@ from vaydeer_studio.service.daemon import request as service_request
 
 LOGGER = logging.getLogger(__name__)
 _STARTUP_RETRY_DELAYS_MS = (250, 500, 1_000, 1_500, 2_000)
+_CONNECTION_HEALTH_INTERVAL_MS = 1_500
 
 _KEY_CODES = {
     "CTRL": 17,
@@ -72,6 +73,7 @@ class StudioController(QObject):
         self.mock = mock
         self._transport: MockJP1011Transport | HidrawCommandTransport | None = None
         self._protocol: VaydeerProtocol | None = None
+        self._command_instance_key: str | None = None
         self.profile = factory_jp1011_profile()
         self._snapshot = DeviceSnapshot(
             device=MockJP1011Transport().snapshot().device,
@@ -88,6 +90,7 @@ class StudioController(QObject):
         self._service_keepalive = "Mock active" if mock else "Service unavailable"
         self._retry_attempt = 0
         self._diagnostic_summary = "Run diagnostics to inspect the current Linux hardware setup."
+        self._setup_checks: list[dict[str, str]] = self._default_setup_checks()
         if mock:
             self._transport = MockJP1011Transport()
             self._protocol = VaydeerProtocol(self._transport)
@@ -101,6 +104,12 @@ class StudioController(QObject):
         self._tester_open = False
         self._tester_events: list[dict[str, str | int]] = []
         self.executor = BindingExecutor(mock_mode=mock)
+        self._health_timer: QTimer | None = None
+        if not mock and QGuiApplication.instance() is not None:
+            self._health_timer = QTimer(self)
+            self._health_timer.setInterval(_CONNECTION_HEALTH_INTERVAL_MS)
+            self._health_timer.timeout.connect(self._monitor_device_connection)
+            self._health_timer.start()
 
     def _set_connection(self, state: str, title: str, message: str, recovery: str, connected: bool) -> None:
         self._connection = {
@@ -156,6 +165,7 @@ class StudioController(QObject):
                 return
             self._transport = open_command_transport(interface.path)
             self._protocol = VaydeerProtocol(self._transport)
+            self._command_instance_key = interface.instance_key
             self._status = "Vaydeer command interface opened; reading device information"
         except Exception as error:
             message = str(error)
@@ -175,6 +185,45 @@ class StudioController(QObject):
                 self._protocol.close()
         self._protocol = None
         self._transport = None
+        self._command_instance_key = None
+
+    def _monitor_device_connection(self) -> None:
+        """Reflect unplug/replug changes without polling vendor commands."""
+
+        if self.mock:
+            return
+        try:
+            candidates = [item for item in discover_linux_hidraw() if item.is_vaydeer]
+            interface = select_command_interface(candidates) if candidates else None
+        except Exception as error:
+            LOGGER.warning("Vaydeer connection health check failed: %s", error)
+            interface = None
+        if interface is None:
+            was_connected = bool(self._connection["connected"]) or self._protocol is not None
+            self._close_command_transport()
+            self._refresh_service_status()
+            if was_connected:
+                self._set_connection(
+                    "device_disconnected",
+                    "Vaydeer keypad disconnected",
+                    "The command interface disappeared from Linux.",
+                    "Reconnect the keypad; Vaydeer Studio will retry automatically.",
+                    False,
+                )
+                self._status = "Vaydeer keypad disconnected; waiting for reconnect"
+            self.changed.emit()
+            self.statusChanged.emit()
+            return
+        if self._protocol is None or interface.instance_key != self._command_instance_key:
+            self._retry_attempt = 0
+            self._attempt_connection(schedule_retry=False)
+            self.changed.emit()
+            self.statusChanged.emit()
+            return
+        previous_keepalive = self._service_keepalive
+        self._refresh_service_status()
+        if previous_keepalive != self._service_keepalive:
+            self.changed.emit()
 
     def _refresh_service_status(self) -> None:
         if self.mock:
@@ -269,10 +318,11 @@ class StudioController(QObject):
             "writable": capability.writable and self.mock,
             "warning": (
                 ""
-                if self._service_keepalive not in {"Service unavailable", "stopped"}
+                if self._service_keepalive in {"active_readonly", "Mock active"}
                 else (
-                    "Keepalive service is unavailable. Run ./scripts/install.sh "
-                    "to enable JP-1011 Linux key activation."
+                    f"Interface-2 keepalive is {self._service_keepalive}. "
+                    "Normal Linux keyboard activation may be unavailable. "
+                    "Open Diagnostics or run ./scripts/install.sh to repair it."
                 )
             )
             if capability.writable
@@ -289,14 +339,7 @@ class StudioController(QObject):
 
     @Property(list, notify=changed)
     def setupChecks(self) -> list[dict[str, str]]:
-        device_status = "pass" if self._connection["connected"] else "fail"
-        service_status = "pass" if self._service_keepalive == "active_readonly" else "warn"
-        return [
-            {"label": "Vaydeer device", "status": device_status},
-            {"label": "Command interface 0", "status": device_status},
-            {"label": "Keepalive interface 2", "status": service_status},
-            {"label": "User service", "status": service_status},
-        ]
+        return self._setup_checks
 
     @Property(list, notify=changed)
     def keys(self) -> list[dict[str, Any]]:
@@ -468,7 +511,27 @@ class StudioController(QObject):
 
     @Slot()
     def refreshDiagnostics(self) -> None:
+        if self.mock:
+            self._setup_checks = [
+                {"label": label, "status": "pass"}
+                for label in (
+                    "Mock keypad",
+                    "Command interface",
+                    "Keepalive interface",
+                    "Command access",
+                    "Keepalive access",
+                    "udev rule",
+                    "User service",
+                    "Protocol read",
+                )
+            ]
+            self._diagnostic_summary = "Mock JP-1011 diagnostics are ready; no physical HID device was opened."
+            self._status = "Mock diagnostics complete"
+            self.changed.emit()
+            self.statusChanged.emit()
+            return
         report = collect_diagnostics(verbose=False)
+        self._setup_checks = self._setup_checks_from_report(report)
         self._diagnostic_summary = render_report(report, as_json=False)
         self._status = f"Diagnostics complete: {report.root_cause}"
         self.changed.emit()
@@ -724,6 +787,37 @@ class StudioController(QObject):
     def _replace_layer(self, replacement: Layer) -> None:
         layers = [replacement if layer.index == replacement.index else layer for layer in self.profile.layers]
         self.profile = self.profile.model_copy(update={"layers": layers})
+
+    @staticmethod
+    def _default_setup_checks() -> list[dict[str, str]]:
+        return [
+            {"label": label, "status": "warn"}
+            for label in (
+                "Vaydeer device",
+                "Command interface 0",
+                "Keepalive interface 2",
+                "Command access",
+                "Keepalive access",
+                "udev rule",
+                "User service",
+                "Protocol read",
+            )
+        ]
+
+    @staticmethod
+    def _setup_checks_from_report(report: Any) -> list[dict[str, str]]:
+        labels = {
+            "device": "Vaydeer device",
+            "command_interface": "Command interface 0",
+            "keepalive_interface": "Keepalive interface 2",
+            "command_access": "Command access",
+            "keepalive_access": "Keepalive access",
+            "udev_rule": "udev rule",
+            "user_service": "User service",
+            "protocol": "Protocol read",
+        }
+        statuses = {check.id: check.status for check in report.checks}
+        return [{"label": label, "status": statuses.get(identifier, "warn")} for identifier, label in labels.items()]
 
     @staticmethod
     def _parse_codes(text: str) -> list[int]:

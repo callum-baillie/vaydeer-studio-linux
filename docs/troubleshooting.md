@@ -20,6 +20,12 @@ service, protocol initialization failure, or an unknown firmware that is
 intentionally read-only. It is safe to run while the GUI is open: command
 transactions are serialized on the selected HID node.
 
+When the keypad is unplugged, the UI changes to **Vaydeer keypad disconnected**
+and checks for a dynamically matched command interface every 1.5 seconds. On
+reconnect it refreshes the device snapshot automatically. A manual reconnect
+is still required after a udev rule change, because udev does not retroactively
+change permissions on an already-enumerated node.
+
 ## Permission denied
 
 Confirm the rule is installed, reload it, reconnect the keypad, and inspect the

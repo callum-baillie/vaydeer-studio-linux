@@ -33,10 +33,17 @@ class HidInterface:
     report_descriptor: bytes = b""
     serial: str = ""
     product: str = ""
+    sysfs_path: str = ""
 
     @property
     def is_vaydeer(self) -> bool:
         return self.vendor_id == VAYDEER_VID and self.product_id == VAYDEER_PID
+
+    @property
+    def instance_key(self) -> str:
+        """Identify a kernel HID instance even when a hidraw number is reused."""
+
+        return self.sysfs_path or self.path
 
 
 def _parse_usage(descriptor: bytes) -> tuple[int | None, int | None]:
@@ -117,6 +124,7 @@ def discover_linux_hidraw(
                 usage_page=page,
                 usage=usage,
                 report_descriptor=descriptor,
+                sysfs_path=str(device),
             )
         )
     return discovered

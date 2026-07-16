@@ -60,6 +60,7 @@ class KeepaliveManager:
         self.retry_seconds = retry_seconds
         self._fd: int | None = None
         self._node: str | None = None
+        self._instance_key: str | None = None
         self._event_listening = False
         self._retry_after = 0.0
         self._status = KeepaliveStatus(KeepaliveState.STOPPED, None, "Not started", False)
@@ -91,13 +92,14 @@ class KeepaliveManager:
                 self._set_status(KeepaliveState.WAITING, None, "JP-1011 interface 2 is not connected")
                 self._retry_after = self._clock() + self.retry_seconds
                 return self._status
-            if self._fd is not None and self._node == target.path:
+            if self._fd is not None and self._node == target.path and self._instance_key == target.instance_key:
                 self._set_status(KeepaliveState.ACTIVE, target.path, "Read-only interface 2 handle is open")
                 return self._status
             self._close_locked()
             try:
                 self._fd = self._opener(target.path)
                 self._node = target.path
+                self._instance_key = target.instance_key
                 self._retry_after = 0.0
                 self._set_status(KeepaliveState.ACTIVE, target.path, "Read-only interface 2 handle is open")
             except PermissionError as error:
@@ -129,6 +131,7 @@ class KeepaliveManager:
                 if error.errno in {errno.EIO, errno.ENODEV}:
                     self._close_locked()
                     self._set_status(KeepaliveState.WAITING, None, "Device unplugged while reading vendor events")
+                    self._retry_after = self._clock() + self.retry_seconds
                     return None
                 raise
 
@@ -159,6 +162,7 @@ class KeepaliveManager:
                 self._closer(self._fd)
         self._fd = None
         self._node = None
+        self._instance_key = None
 
     def _set_status(self, state: KeepaliveState, node: str | None, message: str) -> None:
         if (state, node, message) != (self._status.state, self._status.node, self._status.message):

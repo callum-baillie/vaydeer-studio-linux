@@ -1,7 +1,37 @@
 from __future__ import annotations
 
+from vaydeer_studio.core.errors import DeviceError
+from vaydeer_studio.devices.discovery import COMMAND_USAGE, EVENT_USAGE, VENDOR_USAGE_PAGE, HidInterface
+from vaydeer_studio.devices.mock import MockJP1011Transport
 from vaydeer_studio.ui import controller as controller_module
 from vaydeer_studio.ui.controller import StudioController
+
+
+def _interfaces(instance: str) -> list[HidInterface]:
+    return [
+        HidInterface(
+            "/dev/hidraw17",
+            0x0483,
+            0x5752,
+            0,
+            VENDOR_USAGE_PAGE,
+            COMMAND_USAGE,
+            sysfs_path=f"/sys/devices/usb/{instance}/interface0",
+        ),
+        HidInterface(
+            "/dev/hidraw23",
+            0x0483,
+            0x5752,
+            2,
+            VENDOR_USAGE_PAGE,
+            EVENT_USAGE,
+            sysfs_path=f"/sys/devices/usb/{instance}/interface2",
+        ),
+    ]
+
+
+def _active_service(_path, _request):
+    return {"ok": True, "result": {"keepalive": {"state": "active_readonly"}}}
 
 
 def test_mock_controller_exposes_verified_three_by_three_layout() -> None:
@@ -36,3 +66,72 @@ def test_controller_exposes_a_real_disconnected_state(monkeypatch) -> None:
     assert controller.connection["state"] == "no_device"
     assert controller.device["model"] == "No Vaydeer device detected"
     assert controller.keys == []
+
+
+def test_controller_recovers_after_startup_race_and_same_node_replug(monkeypatch) -> None:
+    visible: list[HidInterface] = []
+    monkeypatch.setattr(controller_module, "discover_linux_hidraw", lambda: visible)
+    monkeypatch.setattr(controller_module, "open_command_transport", lambda _path: MockJP1011Transport())
+    monkeypatch.setattr(controller_module, "service_request", _active_service)
+    controller = StudioController(mock=False)
+    if controller._health_timer is not None:
+        controller._health_timer.stop()
+
+    assert controller.connection["state"] == "no_device"
+    visible[:] = _interfaces("1-2:1.0")
+    controller._monitor_device_connection()
+    assert controller.connection["state"] == "connected"
+
+    visible.clear()
+    controller._monitor_device_connection()
+    assert controller.connection["state"] == "device_disconnected"
+    assert controller.keys == []
+
+    visible[:] = _interfaces("1-2:1.1")
+    controller._monitor_device_connection()
+    assert controller.connection["state"] == "connected"
+    assert [item["label"] for item in controller.keys][:3] == ["Num 7", "Num 8", "Num 9"]
+
+
+def test_controller_distinguishes_command_permission_and_protocol_failures(monkeypatch) -> None:
+    visible = _interfaces("1-2:1.0")
+    monkeypatch.setattr(controller_module, "discover_linux_hidraw", lambda: visible)
+    monkeypatch.setattr(controller_module, "service_request", _active_service)
+    monkeypatch.setattr(
+        controller_module,
+        "open_command_transport",
+        lambda _path: (_ for _ in ()).throw(DeviceError("Permission denied opening Vaydeer command interface")),
+    )
+    denied = StudioController(mock=False)
+    if denied._health_timer is not None:
+        denied._health_timer.stop()
+    assert denied.connection["state"] == "permission_denied"
+
+    class BrokenTransport:
+        def transact(self, _report: bytes, _timeout_ms: int) -> bytes:
+            return b""
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(controller_module, "open_command_transport", lambda _path: BrokenTransport())
+    failed = StudioController(mock=False)
+    if failed._health_timer is not None:
+        failed._health_timer.stop()
+    assert failed.connection["state"] == "protocol_failed"
+
+
+def test_connected_controller_explains_keepalive_service_failure(monkeypatch) -> None:
+    monkeypatch.setattr(controller_module, "discover_linux_hidraw", lambda: _interfaces("1-2:1.0"))
+    monkeypatch.setattr(controller_module, "open_command_transport", lambda _path: MockJP1011Transport())
+    monkeypatch.setattr(
+        controller_module,
+        "service_request",
+        lambda _path, _request: (_ for _ in ()).throw(OSError("service unavailable")),
+    )
+    controller = StudioController(mock=False)
+    if controller._health_timer is not None:
+        controller._health_timer.stop()
+
+    assert controller.connection["state"] == "connected"
+    assert "Interface-2 keepalive is Service unavailable" in controller.device["warning"]

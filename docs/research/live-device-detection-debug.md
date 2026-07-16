@@ -29,6 +29,33 @@ recorded because they are assigned dynamically and can change after reconnect.
 The live `0x60` read identified the device as type `1`, subtype `9`, firmware
 `1.0.2`, bootloader `0.2.1`, active layer `0`, and maximum six layers.
 
+## Sanitized host inventory
+
+The validation host was Ubuntu 25.10 on Linux `6.17.0-40-generic`, using an
+X11/LXQt desktop session. The normal desktop user had the `plugdev` group and
+an active `uaccess` ACL. The source installation used Python `3.14.3` and uv
+`0.10.3`; the project itself supports Python 3.11 and later. No mock-mode
+environment setting was active. The installed user service was active and held
+the event interface as a read-only file descriptor.
+
+The following table records one sanitized enumeration. `<instance>` is a
+kernel-assigned HID instance suffix and `<hidrawN>` is explicitly variable
+across reconnects. Descriptor values are included because they are protocol
+evidence, not device identifiers.
+
+| USB interface | Sanitized sysfs shape | Observed hidraw | Usage page / usage | Descriptor prefix | Access | Open-process role |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | `.../usb/1-2/1-2:1.0/0003:0483:5752.<instance>` | `/dev/hidraw0` | `0xFF00` / `0x0001` | `06 00 ff 09 01` | `crw-rw---- root:plugdev`, ACL, normal-user read/write open | Studio command transport only |
+| 1 | `.../usb/1-2/1-2:1.1/0003:0483:5752.<instance>` | `/dev/hidraw1` | keyboard page / no vendor usage | `05 01 09 06` | `crw-rw---- root:plugdev`, ACL, normal-user read open | Linux keyboard input |
+| 2 | `.../usb/1-2/1-2:1.2/0003:0483:5752.<instance>` | `/dev/hidraw2` | `0xFF00` / `0x0002` | `06 00 ff 09 02` | `crw-rw---- root:plugdev`, ACL, normal-user read open | `vaydeer-studiod`, read-only keepalive |
+| 3 | `.../usb/1-2/1-2:1.3/0003:0483:5752.<instance>` | `/dev/hidraw3` | mouse page / no vendor usage | `05 01 09 02` | `crw-rw---- root:plugdev`, ACL, normal-user read open | Linux mouse, consumer, and system input |
+
+`udevadm test` confirmed that the installed Vaydeer Studio rule applies mode
+`0660`, group `plugdev`, and `uaccess` only to interfaces 0 and 2. The service
+unit runs through the user-level launcher rather than a privileged GUI. A
+verbose diagnostic intentionally omits serial values while reporting the same
+usage, permission, service, and protocol facts.
+
 ## Root cause
 
 The original command transport passed a Linux hidraw path to `hidapi.open_path`.
@@ -62,6 +89,9 @@ the intended custom rule did not visibly apply during rule testing.
    requirement.
 7. Match the udev rule at the HID parent and constrain `DEVPATH` to USB
    interfaces `0` and `2`, with mode `0660`, `plugdev` fallback, and `uaccess`.
+8. Track the sysfs HID-instance path in addition to the hidraw node. If Linux
+   reuses the same hidraw number after a replug, both the keepalive and UI
+   reopen their handles instead of mistaking a stale descriptor for a live one.
 
 ## Validation
 
@@ -79,6 +109,26 @@ The inspection returned one layer and nine existing numeric-key mappings. Four
 concurrent `doctor` probes also completed successfully after command locking.
 The Qt Devices view rendered the live firmware, bootloader, layers, permission,
 and keepalive state in offscreen smoke validation.
+
+## Reconnect validation status
+
+The service and controller both have automated coverage for disappearance,
+startup races, changed hidraw nodes, and same-node reuse after a replug. A
+controlled 2026-07-16 observation window was also prepared with the required
+physical-action notice, but USB visibility did not change during that window.
+It is therefore not claimed as a successful physical unplug/replug capture.
+
+To perform the remaining manual check, unplug the keypad for ten seconds and
+reconnect it, then verify the UI changes to **Vaydeer keypad disconnected** and
+returns to **Vaydeer JP-1011 connected** without pressing Retry. Confirm the
+service and live read path afterward:
+
+```bash
+systemctl --user status vaydeer-studio.service
+vaydeer-studio-cli doctor --json --sanitize
+```
+
+The expected result is a fresh interface-2 read-only handle and `"ready": true`.
 
 ## USB stability note
 

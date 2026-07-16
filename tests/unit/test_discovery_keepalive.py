@@ -15,6 +15,7 @@ from vaydeer_studio.devices.discovery import (
     select_command_interface,
     select_keepalive_interface,
 )
+from vaydeer_studio.service import keepalive as keepalive_module
 from vaydeer_studio.service.keepalive import KeepaliveManager, KeepaliveState
 
 
@@ -48,7 +49,16 @@ def test_sysfs_discovery_reads_interface_number_and_vendor_usage(tmp_path: Path)
 
     interfaces = discover_linux_hidraw(sys_class, Path("/dev/mock"))
     assert interfaces == [
-        HidInterface("/dev/mock/hidraw12", 0x0483, 0x5752, 2, VENDOR_USAGE_PAGE, EVENT_USAGE, bytes([6, 0, 255, 9, 2]))
+        HidInterface(
+            "/dev/mock/hidraw12",
+            0x0483,
+            0x5752,
+            2,
+            VENDOR_USAGE_PAGE,
+            EVENT_USAGE,
+            bytes([6, 0, 255, 9, 2]),
+            sysfs_path=str(hid_device),
+        )
     ]
 
 
@@ -78,7 +88,14 @@ def test_sysfs_metadata_remains_authoritative_when_hidapi_usage_is_incomplete(tm
 
     assert select_keepalive_interface(hidapi_interfaces(IncompleteHidApi())) is None
     assert select_keepalive_interface(discover_linux_hidraw(sys_class, Path("/dev/mock"))) == HidInterface(
-        "/dev/mock/hidraw18", 0x0483, 0x5752, 2, VENDOR_USAGE_PAGE, EVENT_USAGE, bytes([6, 0, 255, 9, 2])
+        "/dev/mock/hidraw18",
+        0x0483,
+        0x5752,
+        2,
+        VENDOR_USAGE_PAGE,
+        EVENT_USAGE,
+        bytes([6, 0, 255, 9, 2]),
+        sysfs_path=str(hid_device),
     )
 
 
@@ -123,6 +140,42 @@ def test_keepalive_reopens_after_hidraw_node_changes_on_replug() -> None:
     assert closed == [41]
 
 
+def test_keepalive_reopens_when_kernel_reuses_the_same_hidraw_node() -> None:
+    visible = [
+        HidInterface(
+            "/dev/hidraw9",
+            0x0483,
+            0x5752,
+            2,
+            VENDOR_USAGE_PAGE,
+            EVENT_USAGE,
+            sysfs_path="/sys/devices/usb/1-2/1-2:1.2/0003:0483:5752.0001",
+        )
+    ]
+    opened: list[str] = []
+    closed: list[int] = []
+    manager = KeepaliveManager(
+        discover=lambda: visible,
+        opener=lambda path: opened.append(path) or (40 + len(opened)),
+        closer=closed.append,
+    )
+    assert manager.tick().state == KeepaliveState.ACTIVE
+    visible[:] = [
+        HidInterface(
+            "/dev/hidraw9",
+            0x0483,
+            0x5752,
+            2,
+            VENDOR_USAGE_PAGE,
+            EVENT_USAGE,
+            sysfs_path="/sys/devices/usb/1-2/1-2:1.2/0003:0483:5752.0002",
+        )
+    ]
+    assert manager.tick().state == KeepaliveState.ACTIVE
+    assert opened == ["/dev/hidraw9", "/dev/hidraw9"]
+    assert closed == [41]
+
+
 def test_keepalive_permission_and_eio_are_not_busy_loops() -> None:
     denied = KeepaliveManager(
         discover=lambda: [event_interface()],
@@ -134,3 +187,31 @@ def test_keepalive_permission_and_eio_are_not_busy_loops() -> None:
         opener=lambda _: (_ for _ in ()).throw(OSError(errno.EIO, "gone")),
     )
     assert eio.tick().state == KeepaliveState.WAITING
+
+
+def test_event_disconnect_uses_backoff_before_reopening(monkeypatch) -> None:
+    now = [0.0]
+    opened: list[str] = []
+    manager = KeepaliveManager(
+        discover=lambda: [event_interface()],
+        opener=lambda path: opened.append(path) or 42,
+        clock=lambda: now[0],
+        retry_seconds=2.0,
+    )
+    assert manager.tick().state == KeepaliveState.ACTIVE
+    manager.set_event_listening(True)
+    monkeypatch.setattr(keepalive_module.select, "select", lambda *_args: ([42], [], []))
+    monkeypatch.setattr(
+        keepalive_module.os,
+        "read",
+        lambda _fd, _size: (_ for _ in ()).throw(OSError(errno.EIO, "device gone")),
+    )
+
+    assert manager.read_event() is None
+    assert manager.status()["state"] == KeepaliveState.WAITING
+    assert manager.tick().state == KeepaliveState.WAITING
+    assert opened == ["/dev/hidraw7"]
+
+    now[0] = 2.0
+    assert manager.tick().state == KeepaliveState.ACTIVE
+    assert opened == ["/dev/hidraw7", "/dev/hidraw7"]

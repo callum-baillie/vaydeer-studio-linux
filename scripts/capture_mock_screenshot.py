@@ -48,7 +48,7 @@ def main() -> int:
             return
         application.quit()
 
-    QTimer.singleShot(900, capture)
+    QTimer.singleShot(1_500, capture)
     return application.exec()
 
 

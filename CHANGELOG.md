@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 - 2026-07-16
+
+- Automatically surface USB disappearance in the desktop UI and retry the
+  command channel after reconnect.
+- Track the sysfs HID instance as well as the hidraw node, recovering safely
+  when Linux reuses a node name after a physical replug.
+- Expand the first-run hardware setup report and document the sanitized live
+  interface inventory and remaining manual reconnect validation.
+
 ## 0.1.1 - 2026-07-16
 
 - Repair live JP-1011 discovery with a sysfs-selected native hidraw command

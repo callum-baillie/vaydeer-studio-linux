@@ -25,6 +25,8 @@ ApplicationWindow {
     Material.theme: darkMode ? Material.Dark : Material.Light
     Material.accent: accent
 
+    Component.onCompleted: vaydeerBridge.refreshDiagnostics()
+
     background: Rectangle { color: window.canvas }
 
     Dialog {
@@ -301,7 +303,7 @@ ApplicationWindow {
                             }
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 130
+                                Layout.preferredHeight: 168
                                 color: window.panel
                                 radius: 6
                                 border.color: window.darkMode ? "#33414C" : "#D8E0E6"
@@ -315,19 +317,21 @@ ApplicationWindow {
                                         Button { text: "Reload service"; onClicked: vaydeerBridge.reloadService(); Accessible.name: "Reload Vaydeer keepalive service" }
                                         Button { text: "Copy summary"; onClicked: vaydeerBridge.copyDiagnosticSummary(); Accessible.name: "Copy sanitized diagnostic summary" }
                                     }
-                                    RowLayout {
+                                    GridLayout {
                                         Layout.fillWidth: true
-                                        spacing: 16
+                                        columns: devicesContent.width > 860 ? 4 : 2
+                                        rowSpacing: 8
+                                        columnSpacing: 16
                                         Repeater {
                                             model: vaydeerBridge.setupChecks
                                             delegate: RowLayout {
                                                 required property var modelData
+                                                Layout.fillWidth: true
                                                 spacing: 6
                                                 Rectangle { Layout.preferredWidth: 8; Layout.preferredHeight: 8; radius: 4; color: modelData.status === "pass" ? window.accent : modelData.status === "warn" ? window.amber : window.danger }
                                                 Label { text: modelData.label; color: window.muted; font.pixelSize: 12 }
                                             }
                                         }
-                                        Item { Layout.fillWidth: true }
                                     }
                                     Label { text: "Run ./scripts/install.sh to install or repair udev and the user service. The application never invokes sudo itself."; color: window.muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 }
