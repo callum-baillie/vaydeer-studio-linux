@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - name: Install desktop libraries
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libhidapi-hidraw0
+      - name: Sync dependencies
+        run: uv sync --extra dev
+      - name: Lint
+        run: uv run ruff check src tests
+      - name: Type check
+        run: uv run mypy src
+      - name: Test
+        run: uv run pytest -q
+      - name: Build source and wheel
+        run: uv build
+      - name: Validate package scripts
+        run: ./scripts/package.sh
+      - name: Qt mock smoke test
+        run: QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software uv run vaydeer-studio --mock jp1011 --smoke

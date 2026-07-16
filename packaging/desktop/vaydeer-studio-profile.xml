@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-vaydeer-profile">
+    <comment>Vaydeer Studio profile</comment>
+    <glob pattern="*.vaydeer.json"/>
+    <glob pattern="*.vaydeer.yaml"/>
+    <glob pattern="*.vaydeer.yml"/>
+    <icon name="vaydeer-studio"/>
+  </mime-type>
+</mime-info>

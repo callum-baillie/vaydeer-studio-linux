@@ -16,6 +16,9 @@ dist/
 AppDir/
 *.AppImage
 *.deb
+*.flatpak
+packaging/flatpak/build/
+packaging/flatpak/repo/
 
 # Runtime state and user data
 *.log

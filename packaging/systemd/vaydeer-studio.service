@@ -1,0 +1,15 @@
+[Unit]
+Description=Vaydeer Studio read-only JP-1011 HID keepalive and binding service
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/vaydeer-studiod
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

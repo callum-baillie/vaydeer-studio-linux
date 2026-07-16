@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "id": "jp1011-example",
+  "name": "JP-1011 example",
+  "device_model": "JP-1011",
+  "key_count": 9,
+  "layers": [
+    {
+      "index": 0,
+      "name": "Default",
+      "assignments": [
+        {"key_index": 0, "label": "Copy", "kind": "combination", "key_codes": [17, 67]},
+        {"key_index": 1, "label": "Paste", "kind": "combination", "key_codes": [17, 86]},
+        {"key_index": 2, "label": "Play/Pause", "kind": "media", "key_codes": [179]}
+      ]
+    }
+  ],
+  "linux_bindings": [
+    {
+      "key_index": 8,
+      "layer_index": 0,
+      "trigger": "press",
+      "action": "url",
+      "target": "https://www.vaydeer.com/",
+      "arguments": [],
+      "enabled": true,
+      "allow_shell": false
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Vaydeer Studio
+Comment=Configure Vaydeer macro keypads safely
+Exec=vaydeer-studio
+Icon=vaydeer-studio
+Terminal=false
+Categories=Utility;
+MimeType=application/x-vaydeer-profile;
+Keywords=Vaydeer;keypad;macro;HID;
+StartupNotify=true
