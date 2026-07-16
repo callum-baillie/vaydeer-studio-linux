@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.8 - 2026-07-16
+
+- Rework on-device mappings around a last-read device baseline, a protected
+  mapping draft, per-key current/pending indicators, readable key pickers, and
+  physical keyboard capture. Refreshing the keypad no longer overwrites
+  pending mapping changes.
+- Make Linux bindings editable, surface local service readiness in the binding
+  workflow, and offer only `press` and `release` triggers because those are the
+  triggers currently dispatched by the service.
+- Expand profile workflow with local-save state, device-baseline refresh,
+  explicit use-device-state behavior, JSON/YAML export selection, and saved
+  profile metadata. Add interaction-design research and update the mock image.
+
 ## 0.1.7 - 2026-07-16
 
 - Continue read-only command-interface discovery after startup until the

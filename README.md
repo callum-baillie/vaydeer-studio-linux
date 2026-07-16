@@ -20,15 +20,17 @@ keeps it open through a small user service.
 ## Features
 
 - Device inspection, layers, layer names, and current mappings.
-- A physical 3-by-3 JP-1011 editor with readable values, keyboard capture,
-  layer controls, and a diff review.
+- A physical 3-by-3 JP-1011 editor with readable value choices, keyboard
+  capture, layer controls, device-baseline versus pending-sync indicators, and
+  a diff review.
 - Stable onboard single keys, modifiers, combinations, media/system keys, and
   disabled keys for the observed JP-1011 firmware `1.0.2` / bootloader `0.2.1`.
 - Timestamped open JSON backups, restore staging, dry-run packets, and
   read-back verification.
 - Portable JSON/YAML profiles and an XDG-backed profile library.
-- Linux-side launch, URL, file, directory, command, notification, script, and
-  software-text bindings handled by `vaydeer-studiod`.
+- Linux-side launch, URL, file, directory, command, notification, and script
+  bindings handled by `vaydeer-studiod`, with editable press/release triggers
+  and a structured argument array. Text injection remains backend-dependent.
 - Host-local user-service state for installation, current runtime, control
   socket reachability, and login startup, with a no-`sudo` user-unit install.
 - Mock JP-1011 mode for trying the complete interface without hardware.
@@ -142,7 +144,9 @@ entries, and a user unit. `make run` is a mock-mode shortcut.
    Install the scoped udev rule with `./scripts/install.sh` when permissions
    are not yet granted, then reconnect the keypad.
 3. Confirm model, firmware, permissions, and keepalive.
-4. Read mappings, select a layer/key, and edit a portable profile.
+4. Read mappings, select a layer/key, and edit a portable profile. A device
+   refresh replaces the workspace only when no mappings are pending; otherwise
+   it refreshes the baseline and preserves the draft for comparison.
 5. Use **Preview apply** to create a backup and inspect the diff.
 6. For real hardware, run the displayed CLI command and type `APPLY` in the
    terminal after reviewing its backup path, mapping, diff, and packet list.
@@ -153,11 +157,12 @@ the same review flow.
 
 ## Linux-side bindings
 
-Linux bindings deliberately live outside the keypad firmware. Add one in the
-**Linux bindings** screen, save the profile, and let the user service handle
-the vendor event. Commands use an executable plus argument array by default;
-shell execution requires a profile-level explicit opt-in. These actions need
-Linux and the running service, unlike stable onboard mappings.
+Linux bindings deliberately live outside the keypad firmware. Select a physical
+key and layer, create or edit a binding in the **Linux bindings** screen, save
+the profile, and let the user service handle the vendor event. Commands use an
+executable plus argument array by default; shell execution requires an explicit
+opt-in. The service currently executes `press` and `release` triggers. These
+actions need Linux and the running service, unlike stable onboard mappings.
 
 ## Troubleshooting
 
@@ -198,8 +203,9 @@ make docs
 
 Hardware tests are opt-in with `VAYDEER_HARDWARE_TESTS=1`; they never include
 firmware commands. [docs/development.md](docs/development.md) explains the
-mock transport and test layers. Contributions are welcome under
-[CONTRIBUTING.md](CONTRIBUTING.md).
+mock transport and test layers, and [docs/interaction-design.md](docs/interaction-design.md)
+records the mapping, binding, and profile workflow. Contributions are welcome
+under [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Limitations
 

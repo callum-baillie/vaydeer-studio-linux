@@ -4,6 +4,7 @@ from subprocess import CompletedProcess
 
 from vaydeer_studio.core.errors import DeviceError
 from vaydeer_studio.core.models import AssignmentKind, SupportLevel
+from vaydeer_studio.core.profiles import load_profile
 from vaydeer_studio.devices.discovery import COMMAND_USAGE, EVENT_USAGE, VENDOR_USAGE_PAGE, HidInterface
 from vaydeer_studio.devices.mock import MockJP1011Transport
 from vaydeer_studio.ui import controller as controller_module
@@ -77,6 +78,37 @@ def test_controller_edits_profile_and_generates_diff() -> None:
     assert any("Num 7 -> A" in line for line in controller.previewLines)
 
 
+def test_mapping_refresh_preserves_pending_draft_and_exposes_per_key_sync_state() -> None:
+    controller = StudioController(mock=True)
+    controller.saveKey("Keyboard key", "A", "A")
+
+    assert controller.dirty
+    assert controller.pendingMappingCount == 1
+    assert controller.keys[0]["pending"] is True
+    assert controller.keys[0]["label"] == "A"
+    assert controller.keys[0]["deviceLabel"] == "Num 7"
+
+    controller.readFromDevice()
+
+    assert controller.dirty
+    assert controller.selectedKey["syncState"] == "Pending sync"
+    assert controller.selectedKey["deviceLabel"] == "Num 7"
+    assert controller.profile.layers[0].assignment_for(0).display_name == "A"
+
+    controller.discardChanges()
+    assert controller.dirty is False
+    assert controller.keys[0]["pending"] is False
+    assert controller.keys[0]["label"] == "Num 7"
+
+
+def test_controller_provides_readable_key_choice_values() -> None:
+    controller = StudioController(mock=True)
+
+    assert "Num 7" in controller.keyChoices("Keyboard key")
+    assert controller.keyChoices("Modifier") == ["Ctrl", "Shift", "Alt", "Meta"]
+    assert controller.keyChoices("Media") == ["Play/Pause", "Volume Mute", "Volume Down", "Volume Up"]
+
+
 def test_controller_uses_readable_key_values_and_typed_macro_steps() -> None:
     controller = StudioController(mock=True)
     controller.saveKey("Key combination", "", "CTRL+P", "")
@@ -114,6 +146,38 @@ def test_all_editor_action_categories_create_a_safe_profile_assignment() -> None
 
     controller.saveKey("Macro", "Macro", "", "Ctrl+C; Wait 120; Ctrl+V")
     assert controller.profile.layers[0].assignment_for(0).kind == AssignmentKind.MACRO
+
+
+def test_controller_edits_linux_bindings_and_rejects_unimplemented_triggers() -> None:
+    controller = StudioController(mock=True)
+    controller.addBinding("application", "/usr/bin/gedit", "--new-window", "press")
+
+    assert len(controller.bindings) == 1
+    assert controller.bindingEditor["editing"] is True
+    binding_id = controller.profile.linux_bindings[0].id
+
+    controller.saveBinding("url", "https://example.com", "", "release")
+
+    assert len(controller.bindings) == 1
+    assert controller.profile.linux_bindings[0].id == binding_id
+    assert controller.bindings[0]["action"] == "url"
+    assert controller.bindings[0]["trigger"] == "release"
+
+    controller.newBinding()
+    controller.addBinding("application", "/usr/bin/gedit", "", "hold")
+    assert len(controller.bindings) == 1
+    assert "Only Press and Release" in controller.statusMessage
+
+
+def test_controller_exports_portable_yaml_profile(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(controller_module, "user_data_path", lambda *_args: tmp_path)
+    controller = StudioController(mock=True)
+
+    controller.exportProfile("yaml")
+
+    paths = list((tmp_path / "profiles").glob("*.yaml"))
+    assert len(paths) == 1
+    assert load_profile(paths[0]).name == controller.profileName
 
 
 def test_controller_layer_controls_and_tester_pressed_state() -> None:

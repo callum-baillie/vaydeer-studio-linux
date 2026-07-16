@@ -27,6 +27,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=Path("screenshots/mock-jp1011.png"))
     parser.add_argument("--live", action="store_true", help="Render the connected keypad without writing to it")
     parser.add_argument("--press-key", type=int, choices=range(9), help="Capture a mock tester key while pressed")
+    parser.add_argument("--pending-key", type=int, choices=range(9), help="Stage a visible mock mapping change")
+    parser.add_argument("--width", type=int, default=1440, help="Window width used for the rendered capture")
+    parser.add_argument("--height", type=int, default=900, help="Window height used for the rendered capture")
     args = parser.parse_args()
     target = args.output
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -39,7 +42,12 @@ def main() -> int:
     if not engine.rootObjects():
         return 1
     window = engine.rootObjects()[0]
+    window.setProperty("width", args.width)
+    window.setProperty("height", args.height)
     window.setProperty("navIndex", args.page)
+    if args.pending_key is not None:
+        controller.selectKey(args.pending_key)
+        controller.saveKey("Keyboard key", "Draft", "F13")
     controller.setTesterOpen(args.page == 4)
 
     def capture() -> None:

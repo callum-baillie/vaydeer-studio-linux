@@ -11,7 +11,9 @@ Item {
     property int columns: 3
     property bool interactive: true
     property bool simulateOnClick: false
+    property bool showSyncState: false
     property color accent: "#20BFA9"
+    property color pendingColor: "#D99C35"
     property color ink: "#E7EDF1"
     property color muted: "#9AA8B4"
     property color bodyColor: "#64717B"
@@ -66,6 +68,7 @@ Item {
                         required property var modelData
                         readonly property bool isPressed: keypad.pressedKeys.indexOf(modelData.index) !== -1
                         readonly property bool isSelected: keypad.selectedKey === modelData.index
+                        readonly property bool hasPendingChange: modelData.pending === true
                         readonly property real pressDepth: Math.max(2, height * 0.07)
                         width: (keyGrid.width - keyGrid.spacing * (keyGrid.columns - 1)) / keyGrid.columns
                         height: (keyGrid.height - keyGrid.spacing * (keyGrid.rows - 1)) / keyGrid.rows
@@ -73,9 +76,9 @@ Item {
                         hoverEnabled: keypad.interactive
                         focusPolicy: Qt.StrongFocus
                         Accessible.name: "Physical key " + (modelData.index + 1) + ", " + modelData.label
-                        Accessible.description: modelData.physicalLabel
+                        Accessible.description: modelData.physicalLabel + (physicalKey.hasPendingChange ? ", pending device sync" : ", matches device state")
                         ToolTip.visible: hovered
-                        ToolTip.text: modelData.physicalLabel + "\n" + modelData.label
+                        ToolTip.text: modelData.physicalLabel + "\nDraft: " + modelData.label + (physicalKey.hasPendingChange ? "\nDevice: " + modelData.deviceLabel + "\nPending sync" : "\nCurrent on device")
 
                         onClicked: {
                             keypad.keySelected(modelData.index)
@@ -101,7 +104,7 @@ Item {
                                 radius: Math.max(4, parent.width * 0.11)
                                 color: physicalKey.isPressed ? Qt.darker(keypad.panelColor, 1.18) : keypad.panelColor
                                 border.width: 1
-                                border.color: physicalKey.isSelected ? keypad.accent : Qt.lighter(keypad.panelColor, 1.55)
+                                border.color: physicalKey.isSelected ? keypad.accent : (physicalKey.hasPendingChange ? keypad.pendingColor : Qt.lighter(keypad.panelColor, 1.55))
                                 Behavior on y { NumberAnimation { duration: 65; easing.type: Easing.OutCubic } }
                                 Rectangle {
                                     anchors.fill: parent
@@ -111,6 +114,18 @@ Item {
                                     color: "transparent"
                                     border.width: physicalKey.isSelected ? 1 : 0
                                     border.color: Qt.lighter(keypad.panelColor, 1.28)
+                                }
+                                Rectangle {
+                                    visible: keypad.showSyncState
+                                    width: Math.max(7, parent.width * 0.11)
+                                    height: width
+                                    radius: width / 2
+                                    anchors.top: parent.top
+                                    anchors.right: parent.right
+                                    anchors.topMargin: Math.max(4, parent.width * 0.07)
+                                    anchors.rightMargin: Math.max(4, parent.width * 0.07)
+                                    color: physicalKey.hasPendingChange ? keypad.pendingColor : keypad.accent
+                                    border.color: Qt.lighter(color, 1.2)
                                 }
                             }
                         }

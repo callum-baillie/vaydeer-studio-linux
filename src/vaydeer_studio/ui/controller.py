@@ -31,6 +31,7 @@ from vaydeer_studio.core.models import (
     LinuxBinding,
     MacroEventKind,
     MacroStep,
+    Profile,
     SupportLevel,
     TriggerKind,
     factory_jp1011_profile,
@@ -105,6 +106,8 @@ class StudioController(QObject):
         self._protocol: VaydeerProtocol | None = None
         self._command_instance_key: str | None = None
         self.profile = factory_jp1011_profile()
+        self._profile_origin = "Device snapshot"
+        self._saved_profile: Profile | None = None
         self._snapshot = DeviceSnapshot(
             device=MockJP1011Transport().snapshot().device,
             layers=self.profile.layers,
@@ -129,6 +132,9 @@ class StudioController(QObject):
         self._diagnostic_summary = "Run diagnostics to inspect the current Linux hardware setup."
         self._setup_checks: list[dict[str, str]] = self._default_setup_checks()
         self._last_connection_error: str | None = None
+        self._selected_key = 0
+        self._selected_layer = 0
+        self._selected_binding_index = -1
         self._connection_timer: QTimer | None = None
         self._health_timer: QTimer | None = None
         self._tester_timer: QTimer | None = None
@@ -155,8 +161,6 @@ class StudioController(QObject):
                 )
             ]
             self._diagnostic_summary = "Mock JP-1011 diagnostics are ready; no physical HID device was opened."
-        self._selected_key = 0
-        self._selected_layer = 0
         self._preview: ApplyPreview | None = None
         self._tester_open = False
         self._tester_events: list[dict[str, str | int]] = []
@@ -474,7 +478,8 @@ class StudioController(QObject):
         if self._protocol is not None:
             try:
                 snapshot = self._protocol.read_snapshot()
-                self.profile = self.profile.model_copy(update={"layers": snapshot.layers})
+                if not self.dirty:
+                    self._adopt_device_layers(snapshot)
                 capability = capability_for(snapshot.device)
                 if capability.writable:
                     self._set_connection(
@@ -571,21 +576,31 @@ class StudioController(QObject):
         if not bool(self._connection["connected"]):
             return []
         layer = self._current_layer()
+        device_layer = self._snapshot_layer(layer.index)
         layout = layout_for_key_count(self._snapshot.device.key_count)
-        return [
-            {
-                "index": item.index,
-                "physicalLabel": item.label,
-                "label": layer.assignment_for(item.index).display_name,
-                "value": display_key_codes(layer.assignment_for(item.index).key_codes)
-                if layer.assignment_for(item.index).key_codes
-                else layer.assignment_for(item.index).display_name,
-                "kind": layer.assignment_for(item.index).kind.value,
-                "support": layer.assignment_for(item.index).support.value,
-                "selected": item.index == self._selected_key,
-            }
-            for item in layout.keys
-        ]
+        values: list[dict[str, Any]] = []
+        for item in layout.keys:
+            assignment = layer.assignment_for(item.index)
+            device_assignment = device_layer.assignment_for(item.index) if device_layer is not None else None
+            pending = device_assignment is None or assignment != device_assignment
+            values.append(
+                {
+                    "index": item.index,
+                    "physicalLabel": item.label,
+                    "label": assignment.display_name,
+                    "value": self._assignment_value(assignment),
+                    "kind": assignment.kind.value,
+                    "support": assignment.support.value,
+                    "selected": item.index == self._selected_key,
+                    "pending": pending,
+                    "syncState": "pending" if pending else "device",
+                    "deviceLabel": (
+                        device_assignment.display_name if device_assignment is not None else "No mapping on device"
+                    ),
+                    "deviceValue": self._assignment_value(device_assignment) if device_assignment is not None else "",
+                }
+            )
+        return values
 
     @Property(list, notify=changed)
     def layers(self) -> list[dict[str, Any]]:
@@ -608,6 +623,9 @@ class StudioController(QObject):
     @Property(dict, notify=selectedKeyChanged)
     def selectedKey(self) -> dict[str, Any]:
         assignment = self._current_layer().assignment_for(self._selected_key)
+        device_layer = self._snapshot_layer(self._selected_layer)
+        device_assignment = device_layer.assignment_for(self._selected_key) if device_layer is not None else None
+        pending = device_assignment is None or assignment != device_assignment
         return {
             "index": assignment.key_index,
             "label": assignment.label,
@@ -619,6 +637,11 @@ class StudioController(QObject):
             "macroSteps": [step.display_name for step in assignment.macro_steps],
             "support": assignment.support.value,
             "notes": assignment.notes,
+            "pending": pending,
+            "syncState": "Pending sync" if pending else "Current on device",
+            "deviceLabel": device_assignment.display_name if device_assignment is not None else "No mapping on device",
+            "deviceValue": self._assignment_value(device_assignment) if device_assignment is not None else "",
+            "deviceCategory": self._category_for_assignment(device_assignment) if device_assignment is not None else "",
         }
 
     @Property(str, notify=statusChanged)
@@ -629,9 +652,40 @@ class StudioController(QObject):
     def dirty(self) -> bool:
         return self.profile.layers != self._snapshot.layers
 
+    @Property(int, notify=changed)
+    def pendingMappingCount(self) -> int:
+        if not bool(self._connection["connected"]):
+            return 0
+        pending = 0
+        for layer in self.profile.layers:
+            device_layer = self._snapshot_layer(layer.index)
+            if device_layer is None:
+                pending += self._snapshot.device.key_count + 1
+                continue
+            if layer.name != device_layer.name:
+                pending += 1
+            for key_index in range(self._snapshot.device.key_count):
+                if layer.assignment_for(key_index) != device_layer.assignment_for(key_index):
+                    pending += 1
+        pending += sum(1 for layer in self._snapshot.layers if self._profile_layer(layer.index) is None)
+        return pending
+
+    @Property(str, notify=changed)
+    def deviceBaseline(self) -> str:
+        timestamp = self._snapshot.captured_at.astimezone(UTC).strftime("%H:%M:%S UTC")
+        return f"Read from device at {timestamp}"
+
     @Property(str, notify=changed)
     def profileName(self) -> str:
         return self.profile.name
+
+    @Property(str, notify=changed)
+    def profileOrigin(self) -> str:
+        return self._profile_origin
+
+    @Property(bool, notify=changed)
+    def profileDirty(self) -> bool:
+        return self._saved_profile is None or self.profile != self._saved_profile
 
     @Property(list, notify=previewChanged)
     def previewLines(self) -> list[str]:
@@ -673,15 +727,70 @@ class StudioController(QObject):
 
     @Property(list, notify=changed)
     def bindings(self) -> list[dict[str, Any]]:
-        return [binding.model_dump(mode="json") for binding in self.profile.linux_bindings]
+        values: list[dict[str, Any]] = []
+        for index, binding in enumerate(self.profile.linux_bindings):
+            value = binding.model_dump(mode="json")
+            value.update(
+                {
+                    "index": index,
+                    "keyLabel": f"K{binding.key_index + 1}",
+                    "layerLabel": f"Layer {binding.layer_index + 1}",
+                    "argumentsText": shlex.join(binding.arguments),
+                    "supported": binding.trigger in {TriggerKind.PRESS, TriggerKind.RELEASE},
+                    "selected": index == self._selected_binding_index,
+                }
+            )
+            values.append(value)
+        return values
+
+    @Property(dict, notify=changed)
+    def bindingEditor(self) -> dict[str, Any]:
+        if 0 <= self._selected_binding_index < len(self.profile.linux_bindings):
+            binding = self.profile.linux_bindings[self._selected_binding_index]
+            return {
+                "editing": True,
+                "index": self._selected_binding_index,
+                "keyIndex": binding.key_index,
+                "layerIndex": binding.layer_index,
+                "action": binding.action.value,
+                "target": binding.target,
+                "arguments": shlex.join(binding.arguments),
+                "trigger": binding.trigger.value,
+                "allowShell": binding.allow_shell,
+                "activeWindowPattern": binding.active_window_pattern or "",
+                "supported": binding.trigger in {TriggerKind.PRESS, TriggerKind.RELEASE},
+            }
+        return {
+            "editing": False,
+            "index": -1,
+            "keyIndex": self._selected_key,
+            "layerIndex": self._selected_layer,
+            "action": LinuxActionKind.APPLICATION.value,
+            "target": "",
+            "arguments": "",
+            "trigger": TriggerKind.PRESS.value,
+            "allowShell": False,
+            "activeWindowPattern": "",
+            "supported": True,
+        }
 
     @Property(list, notify=changed)
     def backups(self) -> list[str]:
         return [str(path) for path in BackupStore().list()[:8]]
 
     @Property(list, notify=changed)
-    def savedProfiles(self) -> list[dict[str, str]]:
-        return [{"id": item.id, "name": item.name} for item in ProfileStore().list()]
+    def savedProfiles(self) -> list[dict[str, str | bool]]:
+        return [
+            {
+                "id": item.id,
+                "name": item.name,
+                "layers": str(len(item.layers)),
+                "bindings": str(len(item.linux_bindings)),
+                "updated": item.updated_at.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC"),
+                "active": item.id == self.profile.id,
+            }
+            for item in ProfileStore().list()
+        ]
 
     @Property(int, notify=changed)
     def layoutColumns(self) -> int:
@@ -758,6 +867,42 @@ class StudioController(QObject):
         except ValueError as error:
             self._status = f"That key cannot be represented by the JP-1011 protocol: {error}"
             self.statusChanged.emit()
+
+    @Slot(str, result=list)
+    def keyChoices(self, category: str) -> list[str]:
+        """Provide safe, readable choices for the on-device key editor."""
+
+        navigation = [
+            "Enter",
+            "Tab",
+            "Esc",
+            "Space",
+            "Backspace",
+            "Delete",
+            "Insert",
+            "Home",
+            "End",
+            "Page Up",
+            "Page Down",
+            "Left",
+            "Up",
+            "Right",
+            "Down",
+        ]
+        keyboard = [
+            *[chr(value) for value in range(ord("A"), ord("Z") + 1)],
+            *[str(value) for value in range(10)],
+            *[f"F{value}" for value in range(1, 25)],
+            *[f"Num {value}" for value in range(10)],
+            *navigation,
+        ]
+        choices = {
+            "Keyboard key": keyboard,
+            "Modifier": ["Ctrl", "Shift", "Alt", "Meta"],
+            "Key combination": keyboard,
+            "Media": ["Play/Pause", "Volume Mute", "Volume Down", "Volume Up"],
+        }
+        return choices.get(category, [])
 
     @Slot()
     def startMacroRecording(self) -> None:
@@ -866,10 +1011,11 @@ class StudioController(QObject):
 
     @Slot()
     def discardChanges(self) -> None:
-        self.profile = self.profile.model_copy(update={"layers": self._snapshot.layers})
+        self._adopt_device_layers(self._snapshot)
         self._preview = None
-        self._status = "Profile changes discarded"
+        self._status = "Pending on-device mapping changes discarded; showing the current device state"
         self.changed.emit()
+        self.selectedKeyChanged.emit()
         self.previewChanged.emit()
         self.statusChanged.emit()
 
@@ -880,9 +1026,16 @@ class StudioController(QObject):
             self._attempt_connection()
         else:
             try:
+                has_pending_changes = self.dirty
                 self._snapshot = self._protocol.read_snapshot()
-                self.profile = self.profile.model_copy(update={"layers": self._snapshot.layers})
-                self._status = "Read current configuration from device"
+                if has_pending_changes:
+                    self._status = (
+                        "Device baseline refreshed; keeping "
+                        f"{self.pendingMappingCount} pending mapping change(s) in the draft"
+                    )
+                else:
+                    self._adopt_device_layers(self._snapshot)
+                    self._status = "Read current mappings from device into the workspace"
             except Exception as error:
                 message = str(error)
                 self._set_connection(
@@ -896,6 +1049,7 @@ class StudioController(QObject):
                 self._status = f"Read failed: {message}; reconnecting"
                 self._attempt_connection()
         self.changed.emit()
+        self.selectedKeyChanged.emit()
         self.statusChanged.emit()
 
     @Slot()
@@ -1034,13 +1188,33 @@ class StudioController(QObject):
             try:
                 result = apply_prepared(self._protocol, self._preview, confirmed=True)  # type: ignore[arg-type]
                 self._snapshot = result.verified
-                self.profile = self.profile.model_copy(update={"layers": result.verified.layers})
+                self._adopt_device_layers(result.verified)
                 self._status = f"Mock write verified. Backup preserved at {result.preview.backup_path}"
                 self._preview = None
                 self.changed.emit()
                 self.previewChanged.emit()
             except Exception as error:
                 self._status = f"Apply failed: {error}"
+        self.statusChanged.emit()
+
+    @Slot()
+    def newBinding(self) -> None:
+        self._selected_binding_index = -1
+        self._status = f"Creating a Linux binding for K{self._selected_key + 1} on layer {self._selected_layer + 1}"
+        self.changed.emit()
+        self.statusChanged.emit()
+
+    @Slot(int)
+    def editBinding(self, index: int) -> None:
+        if not 0 <= index < len(self.profile.linux_bindings):
+            return
+        binding = self.profile.linux_bindings[index]
+        self._selected_binding_index = index
+        self._selected_key = binding.key_index
+        self._selected_layer = binding.layer_index
+        self._status = f"Editing Linux binding for K{binding.key_index + 1} on layer {binding.layer_index + 1}"
+        self.changed.emit()
+        self.selectedKeyChanged.emit()
         self.statusChanged.emit()
 
     @Slot(str, str, str, str, bool, str)
@@ -1053,20 +1227,75 @@ class StudioController(QObject):
         allow_shell: bool = False,
         active_window_pattern: str = "",
     ) -> None:
+        self._save_binding(
+            action,
+            target,
+            arguments,
+            trigger,
+            allow_shell,
+            active_window_pattern,
+            replace_selected=False,
+        )
+
+    @Slot(str, str, str, str, bool, str)
+    def saveBinding(
+        self,
+        action: str,
+        target: str,
+        arguments: str,
+        trigger: str = "press",
+        allow_shell: bool = False,
+        active_window_pattern: str = "",
+    ) -> None:
+        self._save_binding(
+            action,
+            target,
+            arguments,
+            trigger,
+            allow_shell,
+            active_window_pattern,
+            replace_selected=True,
+        )
+
+    def _save_binding(
+        self,
+        action: str,
+        target: str,
+        arguments: str,
+        trigger: str,
+        allow_shell: bool,
+        active_window_pattern: str,
+        *,
+        replace_selected: bool,
+    ) -> None:
         try:
+            trigger_kind = TriggerKind(trigger)
+            if trigger_kind not in {TriggerKind.PRESS, TriggerKind.RELEASE}:
+                raise ValueError("Only Press and Release triggers are implemented by the Linux service")
+            action_kind = LinuxActionKind(action)
+            if action_kind in {LinuxActionKind.NOTIFICATION, LinuxActionKind.TEXT} and not target.strip():
+                raise ValueError(f"{action_kind.value.title()} bindings need a target")
             binding = LinuxBinding(
                 key_index=self._selected_key,
                 layer_index=self._selected_layer,
-                action=LinuxActionKind(action),
+                action=action_kind,
                 target=target.strip(),
                 arguments=shlex.split(arguments),
-                trigger=TriggerKind(trigger),
+                trigger=trigger_kind,
                 allow_shell=allow_shell,
                 active_window_pattern=active_window_pattern.strip() or None,
             )
-            self.profile = self.profile.model_copy(update={"linux_bindings": [*self.profile.linux_bindings, binding]})
+            bindings = list(self.profile.linux_bindings)
+            if replace_selected and 0 <= self._selected_binding_index < len(bindings):
+                binding = binding.model_copy(update={"id": bindings[self._selected_binding_index].id})
+                bindings[self._selected_binding_index] = binding
+                self._status = "Linux-side binding updated"
+            else:
+                bindings.append(binding)
+                self._selected_binding_index = len(bindings) - 1
+                self._status = "Linux-side binding added"
+            self.profile = self.profile.model_copy(update={"linux_bindings": bindings})
             self._sync_service_bindings()
-            self._status = "Linux-side binding added"
             self.changed.emit()
             self.statusChanged.emit()
         except Exception as error:
@@ -1080,6 +1309,10 @@ class StudioController(QObject):
         bindings = list(self.profile.linux_bindings)
         del bindings[index]
         self.profile = self.profile.model_copy(update={"linux_bindings": bindings})
+        if self._selected_binding_index == index:
+            self._selected_binding_index = -1
+        elif self._selected_binding_index > index:
+            self._selected_binding_index -= 1
         self._sync_service_bindings()
         self._status = "Linux-side binding removed"
         self.changed.emit()
@@ -1110,11 +1343,17 @@ class StudioController(QObject):
     @Slot()
     def duplicateProfile(self) -> None:
         self.profile = self.profile.model_copy(
-            update={"id": f"{self.profile.id}-copy", "name": f"{self.profile.name} copy"}
+            update={
+                "id": f"{self.profile.id}-copy",
+                "name": f"{self.profile.name} copy",
+                "updated_at": datetime.now(UTC),
+            }
         )
         store = ProfileStore()
         store.save(self.profile)
         store.set_active(self.profile.id)
+        self._saved_profile = self.profile.model_copy(deep=True)
+        self._profile_origin = "Local profile"
         self._sync_service_bindings()
         self._status = "Profile duplicated and saved to the local profile library"
         self.changed.emit()
@@ -1123,8 +1362,11 @@ class StudioController(QObject):
     @Slot()
     def createProfile(self) -> None:
         self.profile = factory_jp1011_profile().model_copy(update={"name": "Untitled profile"})
+        self._saved_profile = None
+        self._profile_origin = "New profile"
         self._selected_key = 0
         self._selected_layer = self.profile.layers[0].index
+        self._selected_binding_index = -1
         self._macro_steps = []
         self._sync_service_bindings()
         self._status = "New JP-1011 profile created"
@@ -1135,8 +1377,10 @@ class StudioController(QObject):
     @Slot(str)
     def renameProfile(self, name: str) -> None:
         if name.strip():
-            self.profile = self.profile.model_copy(update={"name": name.strip()})
+            self.profile = self.profile.model_copy(update={"name": name.strip(), "updated_at": datetime.now(UTC)})
+            self._status = "Profile name changed; save it to retain the local copy"
             self.changed.emit()
+            self.statusChanged.emit()
 
     @Slot(str)
     def importProfile(self, source: str) -> None:
@@ -1147,7 +1391,10 @@ class StudioController(QObject):
                     f"Profile expects {profile.key_count} keys; this keypad has {self._snapshot.device.key_count}"
                 )
             self.profile = profile
+            self._saved_profile = profile.model_copy(deep=True)
+            self._profile_origin = "Imported profile"
             self._selected_layer = profile.layers[0].index if profile.layers else 0
+            self._selected_binding_index = -1
             store = ProfileStore()
             store.save(profile)
             store.set_active(profile.id)
@@ -1164,8 +1411,11 @@ class StudioController(QObject):
         store = ProfileStore()
         store.delete(self.profile.id)
         self.profile = factory_jp1011_profile().model_copy(update={"name": "Untitled profile"})
+        self._saved_profile = None
+        self._profile_origin = "New profile"
         self._selected_key = 0
         self._selected_layer = 0
+        self._selected_binding_index = -1
         self._status = "Current profile cleared"
         self.changed.emit()
         self.selectedKeyChanged.emit()
@@ -1174,8 +1424,11 @@ class StudioController(QObject):
     @Slot()
     def saveProfile(self) -> None:
         store = ProfileStore()
+        self.profile = self.profile.model_copy(update={"updated_at": datetime.now(UTC)})
         path = store.save(self.profile)
         store.set_active(self.profile.id)
+        self._saved_profile = self.profile.model_copy(deep=True)
+        self._profile_origin = "Local profile"
         self._sync_service_bindings()
         self._status = f"Profile saved to {path}"
         self.changed.emit()
@@ -1190,7 +1443,10 @@ class StudioController(QObject):
                     f"Profile expects {profile.key_count} keys; this keypad has {self._snapshot.device.key_count}"
                 )
             self.profile = profile
+            self._saved_profile = profile.model_copy(deep=True)
+            self._profile_origin = "Local profile"
             self._selected_layer = profile.layers[0].index if profile.layers else 0
+            self._selected_binding_index = -1
             ProfileStore().set_active(profile.id)
             self._sync_service_bindings()
             self._status = f"Loaded profile {profile.name!r}"
@@ -1200,11 +1456,12 @@ class StudioController(QObject):
             self._status = f"Could not load profile: {error}"
             self.statusChanged.emit()
 
-    @Slot()
-    def exportProfile(self) -> None:
+    @Slot(str)
+    def exportProfile(self, format_name: str = "json") -> None:
         root = user_data_path("Vaydeer Studio", "Vaydeer Studio") / "profiles"
         timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        path = root / f"{self.profile.name.lower().replace(' ', '-')}-{timestamp}.json"
+        suffix = ".yaml" if format_name.lower() in {"yaml", "yml"} else ".json"
+        path = root / f"{self.profile.name.lower().replace(' ', '-')}-{timestamp}{suffix}"
         save_profile(self.profile, path)
         self._status = f"Profile exported to {path}"
         self.statusChanged.emit()
@@ -1367,10 +1624,31 @@ class StudioController(QObject):
         self.statusChanged.emit()
 
     def _current_layer(self) -> Layer:
-        for layer in self.profile.layers:
-            if layer.index == self._selected_layer:
-                return layer
+        layer = self._profile_layer(self._selected_layer)
+        if layer is not None:
+            return layer
         return self.profile.layers[0]
+
+    def _profile_layer(self, index: int) -> Layer | None:
+        return next((layer for layer in self.profile.layers if layer.index == index), None)
+
+    def _snapshot_layer(self, index: int) -> Layer | None:
+        return next((layer for layer in self._snapshot.layers if layer.index == index), None)
+
+    def _adopt_device_layers(self, snapshot: DeviceSnapshot) -> None:
+        """Use a fresh device snapshot only when there is no staged device diff."""
+
+        self.profile = self.profile.model_copy(update={"layers": snapshot.layers})
+        if self._profile_layer(self._selected_layer) is None:
+            self._selected_layer = snapshot.layers[0].index if snapshot.layers else 0
+        self._selected_key = min(self._selected_key, max(0, snapshot.device.key_count - 1))
+        self._profile_origin = "Device snapshot"
+
+    @staticmethod
+    def _assignment_value(assignment: KeyAssignment) -> str:
+        if assignment.key_codes:
+            return display_key_codes(assignment.key_codes)
+        return assignment.display_name
 
     def _replace_layer(self, replacement: Layer) -> None:
         layers = [replacement if layer.index == replacement.index else layer for layer in self.profile.layers]

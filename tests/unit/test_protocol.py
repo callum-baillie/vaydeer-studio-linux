@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from vaydeer_studio.core.keycodes import parse_key_codes
 from vaydeer_studio.core.models import AssignmentKind, KeyAssignment, SupportLevel
 from vaydeer_studio.devices.mock import MockJP1011Transport
 from vaydeer_studio.protocol.client import VaydeerProtocol
@@ -54,6 +55,13 @@ def test_key_serialization_and_deserialization_round_trip() -> None:
     decoded = decode_assignment(3, DecodedKeyHeader(1, 0xFF, 0, "Copy"), bytes([17, 67]))
     assert decoded.kind == AssignmentKind.COMBINATION
     assert decoded.key_codes == [17, 67]
+
+
+def test_parse_key_codes_accepts_values_as_the_ui_displays_them() -> None:
+    assert parse_key_codes("Num 7") == [103]
+    assert parse_key_codes("Ctrl + Page Down") == [17, 34]
+    assert parse_key_codes("Volume Up") == [175]
+    assert parse_key_codes("Play/Pause") == [179]
 
 
 def test_unknown_read_assignment_is_preserved_as_experimental() -> None:

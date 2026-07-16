@@ -7,6 +7,7 @@ leaking hexadecimal transport details into normal editing workflows.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 
 KEY_CODES: dict[str, int] = {
@@ -77,8 +78,30 @@ _PREFERRED_NAMES.update({96 + value: f"Num {value}" for value in range(10)})
 def parse_key_codes(text: str) -> list[int]:
     """Parse UI-friendly names, decimal values, and hexadecimal values."""
 
+    readable_aliases = {
+        "PLAY/PAUSE": "PLAY_PAUSE",
+        "VOLUME MUTE": "VOLUME_MUTE",
+        "VOLUME DOWN": "VOLUME_DOWN",
+        "VOLUME UP": "VOLUME_UP",
+        "PAGE DOWN": "PAGE_DOWN",
+        "PAGE UP": "PAGE_UP",
+        "NUM 0": "NUM_0",
+        "NUM 1": "NUM_1",
+        "NUM 2": "NUM_2",
+        "NUM 3": "NUM_3",
+        "NUM 4": "NUM_4",
+        "NUM 5": "NUM_5",
+        "NUM 6": "NUM_6",
+        "NUM 7": "NUM_7",
+        "NUM 8": "NUM_8",
+        "NUM 9": "NUM_9",
+    }
+    normalized_text = text.upper()
+    for readable, canonical in readable_aliases.items():
+        normalized_text = re.sub(rf"\b{re.escape(readable)}\b", canonical, normalized_text)
+
     values: list[int] = []
-    for token in text.replace("+", " ").replace(",", " ").split():
+    for token in normalized_text.replace("+", " ").replace(",", " ").split():
         normalized = token.strip().upper().replace("-", "_")
         value = KEY_CODES.get(normalized)
         if value is None:
