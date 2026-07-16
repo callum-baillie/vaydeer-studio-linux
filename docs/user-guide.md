@@ -4,18 +4,24 @@ Open **Devices** to inspect the detected keypad. The JP-1011 diagram follows
 vendor indexes `0` through `8`: top-left to bottom-right.
 
 When no keypad is present, **Devices** shows a disconnected state instead of
-mock data. Select **Retry detection** after connecting it. **Setup** points to
-the source installer, while **Export diagnostics** writes a sanitized report;
-the desktop application never invokes `sudo` itself.
+mock data. Select **Retry detection** after connecting it. The **Local Vaydeer
+service** panel names the host running the desktop app and shows whether the
+user service is installed, running, reachable, and enabled at login. Select
+**Install user service** only to create and enable `vaydeer-studiod` for the
+current user. It never invokes `sudo`; **Setup** remains the explicit source
+installation path for the scoped udev rule. **Export diagnostics** writes a
+sanitized report.
 
 ## On-device mappings
 
-Choose a layer, select a key, choose a stable action category, enter a label
-and key code, and save it to the profile. `A`, `F13`, and `CTRL+ALT+P` are
-accepted key-code forms. Select **Preview apply** to read the device, create a
-backup, and populate the diff. In mock mode Apply commits and verifies the
-change. With a physical keypad, copy the indicated CLI command and perform the
-typed terminal confirmation.
+Choose a layer, select a key on the physical diagram, choose a stable action
+category, then capture a value from a physical keyboard or enter it manually.
+`A`, `F13`, and `CTRL+ALT+P` are accepted forms and render as readable values.
+Macro recording and manual macro steps remain portable experimental profile
+data until their device payload is independently verified. Select **Preview
+apply** to read the device, create a backup, and populate the diff. In mock
+mode Apply commits and verifies the change. With a physical keypad, copy the
+indicated CLI command and perform the typed terminal confirmation.
 
 ## Profiles
 

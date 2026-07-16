@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
+import shlex
+import socket
 import subprocess
+import sys
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from platformdirs import user_data_path
-from PySide6.QtCore import Property, QObject, QTimer, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QTimer, Signal, Slot
 from PySide6.QtGui import QGuiApplication
 
 from vaydeer_studio.core.backup import BackupStore
+from vaydeer_studio.core.keycodes import display_key_codes, parse_key_codes
 from vaydeer_studio.core.models import (
     AssignmentKind,
     DeviceSnapshot,
@@ -22,7 +28,10 @@ from vaydeer_studio.core.models import (
     Layer,
     LinuxActionKind,
     LinuxBinding,
+    MacroEventKind,
+    MacroStep,
     SupportLevel,
+    TriggerKind,
     factory_jp1011_profile,
 )
 from vaydeer_studio.core.profiles import ProfileStore, load_profile, save_profile
@@ -42,24 +51,42 @@ LOGGER = logging.getLogger(__name__)
 _STARTUP_RETRY_DELAYS_MS = (250, 500, 1_000, 1_500, 2_000)
 _CONNECTION_HEALTH_INTERVAL_MS = 1_500
 _TESTER_POLL_INTERVAL_MS = 150
+_SERVICE_UNIT = "vaydeer-studio.service"
 
-_KEY_CODES = {
-    "CTRL": 17,
-    "SHIFT": 16,
-    "ALT": 18,
-    "META": 91,
-    "SPACE": 32,
-    "ENTER": 13,
-    "ESC": 27,
-    "TAB": 9,
-    "PLAY_PAUSE": 179,
-    "VOLUME_UP": 175,
-    "VOLUME_DOWN": 174,
-    "VOLUME_MUTE": 173,
+_QT_KEY_F1 = int(Qt.Key.Key_F1)
+_QT_KEY_F24 = int(Qt.Key.Key_F24)
+_QT_KEY_A = int(Qt.Key.Key_A)
+_QT_KEY_Z = int(Qt.Key.Key_Z)
+_QT_KEY_0 = int(Qt.Key.Key_0)
+_QT_KEY_9 = int(Qt.Key.Key_9)
+_QT_TO_VAYDEER_CODES = {
+    int(Qt.Key.Key_Backspace): 8,
+    int(Qt.Key.Key_Tab): 9,
+    int(Qt.Key.Key_Return): 13,
+    int(Qt.Key.Key_Enter): 13,
+    int(Qt.Key.Key_Shift): 16,
+    int(Qt.Key.Key_Control): 17,
+    int(Qt.Key.Key_Alt): 18,
+    int(Qt.Key.Key_Escape): 27,
+    int(Qt.Key.Key_Space): 32,
+    int(Qt.Key.Key_PageUp): 33,
+    int(Qt.Key.Key_PageDown): 34,
+    int(Qt.Key.Key_End): 35,
+    int(Qt.Key.Key_Home): 36,
+    int(Qt.Key.Key_Left): 37,
+    int(Qt.Key.Key_Up): 38,
+    int(Qt.Key.Key_Right): 39,
+    int(Qt.Key.Key_Down): 40,
+    int(Qt.Key.Key_Insert): 45,
+    int(Qt.Key.Key_Delete): 46,
+    int(Qt.Key.Key_Meta): 91,
 }
-_KEY_CODES.update({chr(value): value for value in range(ord("A"), ord("Z") + 1)})
-_KEY_CODES.update({f"F{value}": 111 + value for value in range(1, 25)})
-_KEY_CODES.update({f"NUM_{value}": 96 + value for value in range(10)})
+_QT_MODIFIER_CODES = (
+    (Qt.KeyboardModifier.ControlModifier.value, 17),
+    (Qt.KeyboardModifier.AltModifier.value, 18),
+    (Qt.KeyboardModifier.ShiftModifier.value, 16),
+    (Qt.KeyboardModifier.MetaModifier.value, 91),
+)
 
 
 class StudioController(QObject):
@@ -89,6 +116,14 @@ class StudioController(QObject):
         }
         self._status = "Mock JP-1011 ready" if mock else "Checking for a Vaydeer keypad"
         self._service_keepalive = "Mock active" if mock else "Service unavailable"
+        self._service_status: dict[str, str | bool] = {
+            "host": socket.gethostname(),
+            "installed": False,
+            "running": False,
+            "startup": False,
+            "reachable": False,
+            "detail": "Checking the local user service.",
+        }
         self._retry_attempt = 0
         self._diagnostic_summary = "Run diagnostics to inspect the current Linux hardware setup."
         self._setup_checks: list[dict[str, str]] = self._default_setup_checks()
@@ -99,12 +134,32 @@ class StudioController(QObject):
             self._set_connection("connected", "Mock JP-1011 connected", "Mock transport is ready.", "", True)
         else:
             self._attempt_connection(schedule_retry=True)
+        if mock:
+            self._refresh_service_status()
+            self._setup_checks = [
+                {"label": label, "status": "pass"}
+                for label in (
+                    "Mock keypad",
+                    "Command interface",
+                    "Keepalive interface",
+                    "Command access",
+                    "Keepalive access",
+                    "udev rule",
+                    "User service",
+                    "Protocol read",
+                )
+            ]
+            self._diagnostic_summary = "Mock JP-1011 diagnostics are ready; no physical HID device was opened."
         self._selected_key = 0
         self._selected_layer = 0
         self._preview: ApplyPreview | None = None
         self._tester_open = False
         self._tester_events: list[dict[str, str | int]] = []
+        self._tester_pressed_keys: set[int] = set()
         self._tester_status = "Open the tester to begin listening for vendor events."
+        self._captured_key_value = ""
+        self._macro_recording = False
+        self._macro_steps: list[MacroStep] = []
         self.executor = BindingExecutor(mock_mode=mock)
         self._health_timer: QTimer | None = None
         self._tester_timer: QTimer | None = None
@@ -207,7 +262,7 @@ class StudioController(QObject):
         if interface is None:
             was_connected = bool(self._connection["connected"]) or self._protocol is not None
             self._close_command_transport()
-            self._refresh_service_status()
+            self._refresh_service_status(inspect_unit=False)
             if was_connected:
                 self._set_connection(
                     "device_disconnected",
@@ -227,20 +282,147 @@ class StudioController(QObject):
             self.statusChanged.emit()
             return
         previous_keepalive = self._service_keepalive
-        self._refresh_service_status()
+        self._refresh_service_status(inspect_unit=False)
         if previous_keepalive != self._service_keepalive:
             self.changed.emit()
 
-    def _refresh_service_status(self) -> None:
+    def _refresh_service_status(self, *, inspect_unit: bool = True) -> None:
+        service = self._inspect_user_service() if inspect_unit else dict(self._service_status)
+        reachable = False
         if self.mock:
             self._service_keepalive = "Mock active"
-            return
+        else:
+            try:
+                response = service_request(default_socket_path(), {"method": "status"})
+                keepalive = response.get("result", {}).get("keepalive", {})
+                self._service_keepalive = str(keepalive.get("state", "Service unavailable"))
+                reachable = bool(response.get("ok"))
+            except OSError:
+                self._service_keepalive = "Service unavailable"
+        if self.mock:
+            try:
+                response = service_request(default_socket_path(), {"method": "status"})
+                reachable = bool(response.get("ok"))
+            except OSError:
+                reachable = False
+        service["reachable"] = reachable
+        if not bool(service["installed"]):
+            service["detail"] = "The Vaydeer Studio user service is not installed on this host."
+        elif bool(service["running"]) and reachable:
+            service["detail"] = "The user service is running and reachable."
+        elif bool(service["running"]):
+            service["detail"] = "The user service is active, but its local control socket is not reachable."
+        elif bool(service["startup"]):
+            service["detail"] = "The user service is installed and enabled for login, but is not running now."
+        else:
+            service["detail"] = "The user service is installed but not enabled for login."
+        self._service_status = service
+
+    @staticmethod
+    def _user_service_unit_path() -> Path:
+        config_home = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+        return config_home / "systemd" / "user" / _SERVICE_UNIT
+
+    def _inspect_user_service(self) -> dict[str, str | bool]:
+        """Inspect the local per-user systemd unit without relying on device HID state."""
+
+        unit_path = self._user_service_unit_path()
         try:
-            response = service_request(default_socket_path(), {"method": "status"})
-            keepalive = response.get("result", {}).get("keepalive", {})
-            self._service_keepalive = str(keepalive.get("state", "Service unavailable"))
-        except OSError:
-            self._service_keepalive = "Service unavailable"
+            result = subprocess.run(
+                [
+                    "systemctl",
+                    "--user",
+                    "show",
+                    _SERVICE_UNIT,
+                    "--property=LoadState",
+                    "--property=ActiveState",
+                    "--property=UnitFileState",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return {
+                "host": socket.gethostname(),
+                "installed": unit_path.exists(),
+                "running": False,
+                "startup": False,
+                "reachable": False,
+                "detail": "systemd user service status is unavailable on this host.",
+            }
+        values = dict(
+            line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
+        )
+        load_state = values.get("LoadState", "not-found")
+        active_state = values.get("ActiveState", "inactive")
+        unit_file_state = values.get("UnitFileState", "disabled")
+        installed = load_state not in {"not-found", ""} or unit_path.exists()
+        return {
+            "host": socket.gethostname(),
+            "installed": installed,
+            "running": active_state == "active",
+            "startup": unit_file_state.startswith("enabled"),
+            "reachable": False,
+            "detail": "",
+        }
+
+    @Slot()
+    def installUserService(self) -> None:
+        """Install only the current user's service unit; udev remains explicit."""
+
+        unit_path = self._user_service_unit_path()
+        executable = str(Path(sys.executable).resolve())
+        unit_contents = "\n".join(
+            (
+                "[Unit]",
+                "Description=Vaydeer Studio read-only keypad keepalive and binding service",
+                "After=graphical-session.target",
+                "Wants=graphical-session.target",
+                "PartOf=graphical-session.target",
+                "",
+                "[Service]",
+                "Type=simple",
+                f"ExecStart={executable} -m vaydeer_studio.service.daemon --log-level info",
+                "Restart=on-failure",
+                "RestartSec=3",
+                "Environment=PYTHONUNBUFFERED=1",
+                "Environment=VAYDEER_STUDIO_LOG_LEVEL=INFO",
+                "NoNewPrivileges=true",
+                "PrivateTmp=true",
+                "StandardOutput=journal",
+                "StandardError=journal",
+                "",
+                "[Install]",
+                "WantedBy=default.target",
+                "",
+            )
+        )
+        try:
+            unit_path.parent.mkdir(parents=True, exist_ok=True)
+            unit_path.write_text(unit_contents, encoding="utf-8")
+            reload_result = subprocess.run(
+                ["systemctl", "--user", "daemon-reload"], check=False, capture_output=True, text=True, timeout=8
+            )
+            enable_result = subprocess.run(
+                ["systemctl", "--user", "enable", "--now", _SERVICE_UNIT],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=12,
+            )
+            self._refresh_service_status()
+            if reload_result.returncode == 0 and enable_result.returncode == 0:
+                self._status = "Installed, enabled, and started the local Vaydeer Studio service"
+            else:
+                detail = enable_result.stderr.strip() or reload_result.stderr.strip() or "systemctl returned an error"
+                self._status = f"The user service unit was written, but could not start: {detail}"
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self._refresh_service_status()
+            self._status = f"Could not install the user service: {error}"
+        self.changed.emit()
+        self.statusChanged.emit()
 
     def _sync_service_bindings(self) -> None:
         if self.mock:
@@ -336,6 +518,12 @@ class StudioController(QObject):
         }
 
     @Property(dict, notify=changed)
+    def service(self) -> dict[str, str | bool]:
+        """Host-local status for the user-managed vaydeer-studiod unit."""
+
+        return self._service_status
+
+    @Property(dict, notify=changed)
     def connection(self) -> dict[str, str | bool]:
         return self._connection
 
@@ -358,6 +546,9 @@ class StudioController(QObject):
                 "index": item.index,
                 "physicalLabel": item.label,
                 "label": layer.assignment_for(item.index).display_name,
+                "value": display_key_codes(layer.assignment_for(item.index).key_codes)
+                if layer.assignment_for(item.index).key_codes
+                else layer.assignment_for(item.index).display_name,
                 "kind": layer.assignment_for(item.index).kind.value,
                 "support": layer.assignment_for(item.index).support.value,
                 "selected": item.index == self._selected_key,
@@ -370,7 +561,16 @@ class StudioController(QObject):
         if not bool(self._connection["connected"]):
             return []
         return [
-            {"index": layer.index, "name": layer.name, "selected": layer.index == self._selected_layer}
+            {
+                "index": layer.index,
+                "name": layer.name,
+                "displayName": (
+                    f"Layer {layer.index + 1}"
+                    if layer.name == str(layer.index)
+                    else f"Layer {layer.index + 1} - {layer.name}"
+                ),
+                "selected": layer.index == self._selected_layer,
+            }
             for layer in self.profile.layers
         ]
 
@@ -381,7 +581,11 @@ class StudioController(QObject):
             "index": assignment.key_index,
             "label": assignment.label,
             "kind": assignment.kind.value,
-            "codes": "+".join(str(code) for code in assignment.key_codes),
+            "category": self._category_for_assignment(assignment),
+            "codes": display_key_codes(assignment.key_codes),
+            "value": display_key_codes(assignment.key_codes),
+            "actionData": assignment.action_data,
+            "macroSteps": [step.display_name for step in assignment.macro_steps],
             "support": assignment.support.value,
             "notes": assignment.notes,
         }
@@ -414,6 +618,24 @@ class StudioController(QObject):
     def testerStatus(self) -> str:
         return self._tester_status
 
+    @Property(list, notify=testerChanged)
+    def testerPressedKeys(self) -> list[int]:
+        """Zero-based physical keys currently held according to vendor events."""
+
+        return sorted(self._tester_pressed_keys)
+
+    @Property(str, notify=selectedKeyChanged)
+    def keyCaptureValue(self) -> str:
+        return self._captured_key_value
+
+    @Property(bool, notify=selectedKeyChanged)
+    def macroRecording(self) -> bool:
+        return self._macro_recording
+
+    @Property(list, notify=selectedKeyChanged)
+    def macroSteps(self) -> list[dict[str, str]]:
+        return [{"label": step.display_name, "event": step.event.value} for step in self._macro_steps]
+
     @Property(bool, constant=True)
     def mockMode(self) -> bool:
         return self.mock
@@ -437,31 +659,55 @@ class StudioController(QObject):
     @Slot(int)
     def selectKey(self, index: int) -> None:
         self._selected_key = index
+        self._captured_key_value = ""
+        assignment = self._current_layer().assignment_for(index)
+        self._macro_steps = list(assignment.macro_steps)
+        self._macro_recording = False
         self.selectedKeyChanged.emit()
         self.changed.emit()
 
     @Slot(int)
     def selectLayer(self, index: int) -> None:
+        if not any(layer.index == index for layer in self.profile.layers):
+            return
         self._selected_layer = index
+        assignment = self._current_layer().assignment_for(self._selected_key)
+        self._macro_steps = list(assignment.macro_steps)
+        self._macro_recording = False
         self.changed.emit()
         self.selectedKeyChanged.emit()
 
-    @Slot(str, str, str)
-    def saveKey(self, category: str, label: str, code_text: str) -> None:
+    @Slot(str, str, str, str)
+    def saveKey(self, category: str, label: str, code_text: str, action_data: str = "") -> None:
         try:
             kind, support = self._kind_from_category(category)
-            codes = [] if kind == AssignmentKind.DISABLED else self._parse_codes(code_text)
+            stable_key_kinds = {
+                AssignmentKind.KEYBOARD,
+                AssignmentKind.MODIFIER,
+                AssignmentKind.COMBINATION,
+                AssignmentKind.MEDIA,
+                AssignmentKind.SYSTEM,
+            }
+            codes = self._parse_codes(code_text) if kind in stable_key_kinds else []
+            macro_steps: list[MacroStep] = []
+            if kind == AssignmentKind.MACRO:
+                macro_steps = self._parse_macro_spec(action_data) if action_data.strip() else list(self._macro_steps)
+                if not macro_steps:
+                    raise ValueError("Record a macro or enter steps such as Ctrl+C; Wait 120; V")
             assignment = KeyAssignment(
                 key_index=self._selected_key,
                 label=label.strip(),
                 kind=kind,
                 key_codes=codes if support == SupportLevel.ON_DEVICE else [],
-                payload=codes if support != SupportLevel.ON_DEVICE else [],
+                action_data="" if kind == AssignmentKind.DISABLED else action_data.strip(),
+                macro_steps=macro_steps,
                 support=support,
-                notes=("Experimental: read-only on physical hardware." if support != SupportLevel.ON_DEVICE else ""),
+                notes=self._assignment_notes(category, support),
             )
             layer = self._current_layer().with_assignment(assignment)
             self._replace_layer(layer)
+            self._macro_steps = list(macro_steps)
+            self._macro_recording = False
             self._status = f"Key {self._selected_key + 1} updated in profile"
             self.changed.emit()
             self.selectedKeyChanged.emit()
@@ -469,6 +715,123 @@ class StudioController(QObject):
         except Exception as error:
             self._status = f"Could not update key: {error}"
             self.statusChanged.emit()
+
+    @Slot(int, int)
+    def captureKeyInput(self, key: int, modifiers: int) -> None:
+        """Populate the editor with a value captured from the physical keyboard."""
+
+        try:
+            codes = self._codes_from_qt(key, modifiers)
+            self._captured_key_value = display_key_codes(codes)
+            self.selectedKeyChanged.emit()
+        except ValueError as error:
+            self._status = f"That key cannot be represented by the JP-1011 protocol: {error}"
+            self.statusChanged.emit()
+
+    @Slot()
+    def startMacroRecording(self) -> None:
+        self._macro_steps = []
+        self._macro_recording = True
+        self._status = "Macro recording is armed. Use the focused capture area, then stop recording."
+        self.selectedKeyChanged.emit()
+        self.statusChanged.emit()
+
+    @Slot()
+    def stopMacroRecording(self) -> None:
+        self._macro_recording = False
+        self._status = f"Captured {len(self._macro_steps)} macro step(s)"
+        self.selectedKeyChanged.emit()
+        self.statusChanged.emit()
+
+    @Slot()
+    def clearMacroRecording(self) -> None:
+        self._macro_steps = []
+        self._macro_recording = False
+        self.selectedKeyChanged.emit()
+
+    @Slot(int, int, bool)
+    def recordMacroInput(self, key: int, modifiers: int, pressed: bool) -> None:
+        """Collect key press/release steps without emitting them to the desktop."""
+
+        if not self._macro_recording:
+            return
+        try:
+            codes = self._codes_from_qt(key, modifiers)
+        except ValueError:
+            return
+        if pressed:
+            self._macro_steps.extend(MacroStep(event=MacroEventKind.PRESS, key_code=code) for code in codes)
+        else:
+            self._macro_steps.extend(
+                MacroStep(event=MacroEventKind.RELEASE, key_code=code) for code in reversed(codes)
+            )
+        self.selectedKeyChanged.emit()
+
+    @Slot()
+    def addLayer(self) -> None:
+        used = {layer.index for layer in self.profile.layers}
+        maximum = self._snapshot.device.max_layers
+        next_index = next((index for index in range(maximum) if index not in used), None)
+        if next_index is None:
+            self._status = f"This device supports at most {maximum} layers"
+            self.statusChanged.emit()
+            return
+        assignments = [KeyAssignment(key_index=index) for index in range(self.profile.key_count)]
+        layer = Layer(index=next_index, name=str(next_index), assignments=assignments)
+        layers = sorted([*self.profile.layers, layer], key=lambda item: item.index)
+        self.profile = self.profile.model_copy(update={"layers": layers})
+        self._selected_layer = next_index
+        self._status = f"Layer {next_index + 1} added to the profile"
+        self.changed.emit()
+        self.selectedKeyChanged.emit()
+        self.statusChanged.emit()
+
+    @Slot()
+    def duplicateLayer(self) -> None:
+        used = {layer.index for layer in self.profile.layers}
+        maximum = self._snapshot.device.max_layers
+        next_index = next((index for index in range(maximum) if index not in used), None)
+        if next_index is None:
+            self._status = f"This device supports at most {maximum} layers"
+            self.statusChanged.emit()
+            return
+        source = self._current_layer()
+        duplicate = source.model_copy(update={"index": next_index, "name": f"{source.name} copy"[:28]})
+        self.profile = self.profile.model_copy(
+            update={"layers": sorted([*self.profile.layers, duplicate], key=lambda item: item.index)}
+        )
+        self._selected_layer = next_index
+        self._status = f"Layer {source.index + 1} duplicated"
+        self.changed.emit()
+        self.selectedKeyChanged.emit()
+        self.statusChanged.emit()
+
+    @Slot()
+    def deleteLayer(self) -> None:
+        if len(self.profile.layers) <= 1:
+            self._status = "A profile must keep at least one layer"
+            self.statusChanged.emit()
+            return
+        deleted = self._selected_layer
+        remaining = [layer for layer in self.profile.layers if layer.index != deleted]
+        self.profile = self.profile.model_copy(update={"layers": remaining})
+        self._selected_layer = remaining[0].index
+        self._status = f"Layer {deleted + 1} removed from the profile"
+        self.changed.emit()
+        self.selectedKeyChanged.emit()
+        self.statusChanged.emit()
+
+    @Slot(str)
+    def renameLayer(self, name: str) -> None:
+        clean_name = name.strip()
+        if not clean_name:
+            self._status = "Layer names cannot be empty"
+            self.statusChanged.emit()
+            return
+        self._replace_layer(self._current_layer().model_copy(update={"name": clean_name[:28]}))
+        self._status = "Layer renamed in the profile"
+        self.changed.emit()
+        self.statusChanged.emit()
 
     @Slot()
     def discardChanges(self) -> None:
@@ -564,20 +927,37 @@ class StudioController(QObject):
 
     @Slot()
     def reloadService(self) -> None:
-        result = subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True, text=True)
-        if result.returncode == 0:
+        try:
             result = subprocess.run(
-                ["systemctl", "--user", "restart", "vaydeer-studio.service"],
-                check=False,
-                capture_output=True,
-                text=True,
+                ["systemctl", "--user", "daemon-reload"], check=False, capture_output=True, text=True, timeout=8
             )
+            if result.returncode == 0:
+                result = subprocess.run(
+                    ["systemctl", "--user", "restart", _SERVICE_UNIT],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=12,
+                )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            self._refresh_service_status()
+            self._status = f"Could not reload the user service: {error}"
+            self.changed.emit()
+            self.statusChanged.emit()
+            return
         self._refresh_service_status()
         self._status = (
             "Keepalive service reloaded"
             if result.returncode == 0
             else result.stderr.strip() or "Could not reload service"
         )
+        self.changed.emit()
+        self.statusChanged.emit()
+
+    @Slot()
+    def refreshServiceStatus(self) -> None:
+        self._refresh_service_status()
+        self._status = "Refreshed local Vaydeer service status"
         self.changed.emit()
         self.statusChanged.emit()
 
@@ -633,15 +1013,26 @@ class StudioController(QObject):
                 self._status = f"Apply failed: {error}"
         self.statusChanged.emit()
 
-    @Slot(str, str, str)
-    def addBinding(self, action: str, target: str, arguments: str) -> None:
+    @Slot(str, str, str, str, bool, str)
+    def addBinding(
+        self,
+        action: str,
+        target: str,
+        arguments: str,
+        trigger: str = "press",
+        allow_shell: bool = False,
+        active_window_pattern: str = "",
+    ) -> None:
         try:
             binding = LinuxBinding(
                 key_index=self._selected_key,
                 layer_index=self._selected_layer,
                 action=LinuxActionKind(action),
                 target=target.strip(),
-                arguments=[item for item in arguments.split(" ") if item],
+                arguments=shlex.split(arguments),
+                trigger=TriggerKind(trigger),
+                allow_shell=allow_shell,
+                active_window_pattern=active_window_pattern.strip() or None,
             )
             self.profile = self.profile.model_copy(update={"linux_bindings": [*self.profile.linux_bindings, binding]})
             self._sync_service_bindings()
@@ -651,6 +1042,28 @@ class StudioController(QObject):
         except Exception as error:
             self._status = f"Could not add binding: {error}"
             self.statusChanged.emit()
+
+    @Slot(int)
+    def removeBinding(self, index: int) -> None:
+        if not 0 <= index < len(self.profile.linux_bindings):
+            return
+        bindings = list(self.profile.linux_bindings)
+        del bindings[index]
+        self.profile = self.profile.model_copy(update={"linux_bindings": bindings})
+        self._sync_service_bindings()
+        self._status = "Linux-side binding removed"
+        self.changed.emit()
+        self.statusChanged.emit()
+
+    @Slot(int, bool)
+    def setBindingEnabled(self, index: int, enabled: bool) -> None:
+        if not 0 <= index < len(self.profile.linux_bindings):
+            return
+        bindings = list(self.profile.linux_bindings)
+        bindings[index] = bindings[index].model_copy(update={"enabled": enabled})
+        self.profile = self.profile.model_copy(update={"linux_bindings": bindings})
+        self._sync_service_bindings()
+        self.changed.emit()
 
     @Slot(int)
     def runBinding(self, index: int) -> None:
@@ -675,6 +1088,18 @@ class StudioController(QObject):
         self._sync_service_bindings()
         self._status = "Profile duplicated and saved to the local profile library"
         self.changed.emit()
+        self.statusChanged.emit()
+
+    @Slot()
+    def createProfile(self) -> None:
+        self.profile = factory_jp1011_profile().model_copy(update={"name": "Untitled profile"})
+        self._selected_key = 0
+        self._selected_layer = self.profile.layers[0].index
+        self._macro_steps = []
+        self._sync_service_bindings()
+        self._status = "New JP-1011 profile created"
+        self.changed.emit()
+        self.selectedKeyChanged.emit()
         self.statusChanged.emit()
 
     @Slot(str)
@@ -770,6 +1195,7 @@ class StudioController(QObject):
             self._tester_status = "Tester closed; vendor events are no longer recorded for this screen."
         if not opened:
             self._tester_events = []
+            self._tester_pressed_keys.clear()
         self.testerChanged.emit()
 
     def _set_service_tester(self, enabled: bool) -> None:
@@ -807,17 +1233,13 @@ class StudioController(QObject):
                     key_index = item.get("key_index")
                     layer_index = item.get("layer_index")
                     pressed = item.get("pressed")
-                    self._tester_events.insert(
-                        0,
-                        {
-                            "timestamp": str(item.get("timestamp", "")),
-                            "key": key_index + 1 if isinstance(key_index, int) else 0,
-                            "event": "Press" if pressed is True else "Release" if pressed is False else "Unknown",
-                            "layer": layer_index + 1 if isinstance(layer_index, int) else 0,
-                            "raw": str(item.get("raw", "")),
-                        },
+                    self._append_tester_event(
+                        key_index=key_index if isinstance(key_index, int) else None,
+                        layer_index=layer_index if isinstance(layer_index, int) else None,
+                        pressed=pressed if isinstance(pressed, bool) else None,
+                        timestamp=str(item.get("timestamp", "")),
+                        raw=str(item.get("raw", "")),
                     )
-                self._tester_events = self._tester_events[:30]
                 self._tester_status = "Receiving vendor key events."
                 self.testerChanged.emit()
             self.changed.emit()
@@ -831,20 +1253,51 @@ class StudioController(QObject):
     def simulateKey(self, key_index: int) -> None:
         if not isinstance(self._transport, MockJP1011Transport) or not self._tester_open:
             return
-        for pressed in (True, False):
-            raw = self._transport.queue_event(key_index, pressed, self._selected_layer)
-            self._tester_events.insert(
-                0,
-                {
-                    "timestamp": datetime.now(UTC).strftime("%H:%M:%S.%f")[:-3],
-                    "key": key_index + 1,
-                    "event": "Press" if pressed else "Release",
-                    "layer": self._selected_layer + 1,
-                    "raw": raw[:6].hex(" "),
-                },
-            )
-        self._tester_events = self._tester_events[:30]
+        self._record_mock_tester_event(key_index, True)
+        if QGuiApplication.instance() is None:
+            self._record_mock_tester_event(key_index, False)
+        else:
+            QTimer.singleShot(140, lambda: self._record_mock_tester_event(key_index, False))
         self.testerChanged.emit()
+
+    def _record_mock_tester_event(self, key_index: int, pressed: bool) -> None:
+        if not isinstance(self._transport, MockJP1011Transport) or not self._tester_open:
+            return
+        raw = self._transport.queue_event(key_index, pressed, self._selected_layer)
+        self._append_tester_event(
+            key_index=key_index,
+            layer_index=self._selected_layer,
+            pressed=pressed,
+            timestamp=datetime.now(UTC).strftime("%H:%M:%S.%f")[:-3],
+            raw=raw[:6].hex(" "),
+        )
+        self.testerChanged.emit()
+
+    def _append_tester_event(
+        self,
+        *,
+        key_index: int | None,
+        layer_index: int | None,
+        pressed: bool | None,
+        timestamp: str,
+        raw: str,
+    ) -> None:
+        if key_index is not None:
+            if pressed is True:
+                self._tester_pressed_keys.add(key_index)
+            elif pressed is False:
+                self._tester_pressed_keys.discard(key_index)
+        self._tester_events.insert(
+            0,
+            {
+                "timestamp": timestamp,
+                "key": key_index + 1 if key_index is not None else 0,
+                "event": "Press" if pressed is True else "Release" if pressed is False else "Unknown",
+                "layer": layer_index + 1 if layer_index is not None else 0,
+                "raw": raw,
+            },
+        )
+        self._tester_events = self._tester_events[:30]
 
     @Slot()
     def exportDiagnostics(self) -> None:
@@ -899,16 +1352,72 @@ class StudioController(QObject):
 
     @staticmethod
     def _parse_codes(text: str) -> list[int]:
-        values: list[int] = []
-        for token in text.replace("+", " ").replace(",", " ").split():
-            normalized = token.strip().upper()
-            if normalized in _KEY_CODES:
-                values.append(_KEY_CODES[normalized])
-            else:
-                values.append(int(normalized, 0))
-        if not values:
-            raise ValueError("Enter a key code or key name")
-        return values
+        return parse_key_codes(text)
+
+    @staticmethod
+    def _codes_from_qt(key: int, modifiers: int) -> list[int]:
+        """Translate a Qt key event into the byte values used by profiles."""
+
+        primary: int | None
+        if _QT_KEY_A <= key <= _QT_KEY_Z or _QT_KEY_0 <= key <= _QT_KEY_9:
+            primary = ord(chr(key))
+        elif _QT_KEY_F1 <= key <= _QT_KEY_F24:
+            primary = 112 + (key - _QT_KEY_F1)
+        else:
+            primary = _QT_TO_VAYDEER_CODES.get(key)
+        if primary is None:
+            raise ValueError(f"Qt key {key}")
+        modifier_codes = [code for mask, code in _QT_MODIFIER_CODES if modifiers & mask and code != primary]
+        return [*modifier_codes, primary]
+
+    @staticmethod
+    def _parse_macro_spec(text: str) -> list[MacroStep]:
+        """Parse a compact portable macro notation without claiming device support.
+
+        Each semicolon-separated shortcut is pressed then released.  ``Wait 120``
+        adds a delay.  These steps are stored in the profile and never emitted to
+        a physical keypad until the vendor macro payload is independently known.
+        """
+
+        steps: list[MacroStep] = []
+        for part in (item.strip() for item in re.split(r"[;\n]", text)):
+            if not part:
+                continue
+            delay = re.fullmatch(r"(?:wait|delay)\s+(\d+)\s*(?:ms)?", part, re.IGNORECASE)
+            if delay:
+                steps.append(MacroStep(event=MacroEventKind.DELAY, delay_ms=int(delay.group(1))))
+                continue
+            codes = parse_key_codes(part)
+            steps.extend(MacroStep(event=MacroEventKind.PRESS, key_code=code) for code in codes)
+            steps.extend(MacroStep(event=MacroEventKind.RELEASE, key_code=code) for code in reversed(codes))
+        return steps
+
+    @staticmethod
+    def _assignment_notes(category: str, support: SupportLevel) -> str:
+        if support == SupportLevel.ON_DEVICE:
+            return "Stored on the keypad and eligible for a verified write."
+        if support == SupportLevel.SERVICE:
+            return f"{category} is handled by Vaydeer Studio's Linux service; it is not sent to the keypad."
+        return f"{category} is retained in this profile for research and mock workflows; it is never sent to hardware."
+
+    @staticmethod
+    def _category_for_assignment(assignment: KeyAssignment) -> str:
+        categories = {
+            AssignmentKind.KEYBOARD: "Keyboard key",
+            AssignmentKind.MODIFIER: "Modifier",
+            AssignmentKind.COMBINATION: "Key combination",
+            AssignmentKind.MEDIA: "Media",
+            AssignmentKind.SYSTEM: "System control",
+            AssignmentKind.MOUSE: "Mouse",
+            AssignmentKind.MACRO: "Macro",
+            AssignmentKind.TEXT: "Text",
+            AssignmentKind.VAYDEER: "Vaydeer action",
+            AssignmentKind.LINUX_HOST: "Linux host action",
+            AssignmentKind.DISABLED: "Disabled",
+        }
+        if assignment.kind == AssignmentKind.SPECIAL:
+            return "Layer action"
+        return categories.get(assignment.kind, "Vaydeer action")
 
     @staticmethod
     def _kind_from_category(category: str) -> tuple[AssignmentKind, SupportLevel]:
@@ -926,8 +1435,10 @@ class StudioController(QObject):
             "Mouse": AssignmentKind.MOUSE,
             "Macro": AssignmentKind.MACRO,
             "Text": AssignmentKind.TEXT,
-            "Layer action": AssignmentKind.VAYDEER,
+            "Layer action": AssignmentKind.SPECIAL,
             "Vaydeer action": AssignmentKind.VAYDEER,
             "Linux host action": AssignmentKind.LINUX_HOST,
         }
-        return experimental.get(category, AssignmentKind.SPECIAL), SupportLevel.EXPERIMENTAL
+        kind = experimental.get(category, AssignmentKind.SPECIAL)
+        service_managed = {AssignmentKind.TEXT, AssignmentKind.LINUX_HOST}
+        return kind, SupportLevel.SERVICE if kind in service_managed else SupportLevel.EXPERIMENTAL

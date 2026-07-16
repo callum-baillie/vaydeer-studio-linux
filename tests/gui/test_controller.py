@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from subprocess import CompletedProcess
+
 from vaydeer_studio.core.errors import DeviceError
+from vaydeer_studio.core.models import AssignmentKind, SupportLevel
 from vaydeer_studio.devices.discovery import COMMAND_USAGE, EVENT_USAGE, VENDOR_USAGE_PAGE, HidInterface
 from vaydeer_studio.devices.mock import MockJP1011Transport
 from vaydeer_studio.ui import controller as controller_module
@@ -66,6 +69,99 @@ def test_controller_edits_profile_and_generates_diff() -> None:
     assert controller.dirty
     controller.previewApply()
     assert any("Num 7 -> A" in line for line in controller.previewLines)
+
+
+def test_controller_uses_readable_key_values_and_typed_macro_steps() -> None:
+    controller = StudioController(mock=True)
+    controller.saveKey("Key combination", "", "CTRL+P", "")
+
+    assert controller.selectedKey["codes"] == "Ctrl + P"
+    assert controller.keys[0]["label"] == "Ctrl + P"
+
+    controller.startMacroRecording()
+    controller.recordMacroInput(ord("A"), 0, True)
+    controller.recordMacroInput(ord("A"), 0, False)
+    controller.saveKey("Macro", "Clipboard", "", "")
+
+    assignment = controller.profile.layers[0].assignment_for(0)
+    assert assignment.kind == AssignmentKind.MACRO
+    assert assignment.support == SupportLevel.EXPERIMENTAL
+    assert [step.display_name for step in assignment.macro_steps] == ["Press A", "Release A"]
+
+
+def test_all_editor_action_categories_create_a_safe_profile_assignment() -> None:
+    controller = StudioController(mock=True)
+    expected = {
+        "Mouse": (AssignmentKind.MOUSE, SupportLevel.EXPERIMENTAL),
+        "Text": (AssignmentKind.TEXT, SupportLevel.SERVICE),
+        "Layer action": (AssignmentKind.SPECIAL, SupportLevel.EXPERIMENTAL),
+        "Vaydeer action": (AssignmentKind.VAYDEER, SupportLevel.EXPERIMENTAL),
+        "Linux host action": (AssignmentKind.LINUX_HOST, SupportLevel.SERVICE),
+        "Disabled": (AssignmentKind.DISABLED, SupportLevel.ON_DEVICE),
+    }
+    for category, (kind, support) in expected.items():
+        controller.saveKey(category, category, "", "draft detail")
+        assignment = controller.profile.layers[0].assignment_for(0)
+        assert assignment.kind == kind
+        assert assignment.support == support
+        assert assignment.transmit_supported is (kind == AssignmentKind.DISABLED)
+
+    controller.saveKey("Macro", "Macro", "", "Ctrl+C; Wait 120; Ctrl+V")
+    assert controller.profile.layers[0].assignment_for(0).kind == AssignmentKind.MACRO
+
+
+def test_controller_layer_controls_and_tester_pressed_state() -> None:
+    controller = StudioController(mock=True)
+    controller.addLayer()
+    assert [layer.index for layer in controller.profile.layers] == [0, 1]
+    assert controller.layers[-1]["selected"]
+
+    controller.renameLayer("Editing")
+    assert controller.profile.layers[-1].name == "Editing"
+    controller.duplicateLayer()
+    assert len(controller.profile.layers) == 3
+    controller.deleteLayer()
+    assert len(controller.profile.layers) == 2
+
+    controller.setTesterOpen(True)
+    controller._append_tester_event(
+        key_index=4,
+        layer_index=1,
+        pressed=True,
+        timestamp="12:00:00.000",
+        raw="fb 03 01 04 01 fc",
+    )
+    assert controller.testerPressedKeys == [4]
+    controller._append_tester_event(
+        key_index=4,
+        layer_index=1,
+        pressed=False,
+        timestamp="12:00:00.100",
+        raw="fb 03 01 04 00 fd",
+    )
+    assert controller.testerPressedKeys == []
+
+
+def test_controller_reports_and_installs_host_local_user_service(monkeypatch, tmp_path) -> None:
+    def fake_run(command, **_kwargs):
+        if "show" in command:
+            return CompletedProcess(command, 0, "LoadState=loaded\nActiveState=active\nUnitFileState=enabled\n", "")
+        return CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(controller_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(controller_module, "service_request", _active_service)
+    unit_path = tmp_path / "systemd" / "user" / "vaydeer-studio.service"
+    monkeypatch.setattr(StudioController, "_user_service_unit_path", staticmethod(lambda: unit_path))
+
+    controller = StudioController(mock=True)
+    assert controller.service["installed"] is True
+    assert controller.service["running"] is True
+    assert controller.service["startup"] is True
+    assert controller.service["reachable"] is True
+
+    controller.installUserService()
+    assert unit_path.exists()
+    assert "vaydeer_studio.service.daemon" in unit_path.read_text(encoding="utf-8")
 
 
 def test_controller_exposes_a_real_disconnected_state(monkeypatch) -> None:

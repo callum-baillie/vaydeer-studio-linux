@@ -4,7 +4,16 @@ from pathlib import Path
 
 from vaydeer_studio.core.backup import BackupStore
 from vaydeer_studio.core.diff import format_diff, snapshot_diff
-from vaydeer_studio.core.models import AssignmentKind, DeviceInfo, KeyAssignment, Layer, Profile, factory_jp1011_profile
+from vaydeer_studio.core.models import (
+    AssignmentKind,
+    DeviceInfo,
+    KeyAssignment,
+    Layer,
+    MacroEventKind,
+    MacroStep,
+    Profile,
+    factory_jp1011_profile,
+)
 from vaydeer_studio.core.profiles import ProfileStore, load_profile, save_profile, validate_for_device
 from vaydeer_studio.devices.mock import MockJP1011Transport
 from vaydeer_studio.protocol.client import VaydeerProtocol
@@ -72,3 +81,21 @@ def test_profile_snapshot_materializes_missing_keys_as_disabled() -> None:
         AssignmentKind.DISABLED,
         AssignmentKind.DISABLED,
     ]
+
+
+def test_profile_keeps_readable_key_values_and_typed_macro_steps() -> None:
+    shortcut = KeyAssignment(key_index=0, kind=AssignmentKind.COMBINATION, key_codes=[17, 80])
+    macro = KeyAssignment(
+        key_index=1,
+        kind=AssignmentKind.MACRO,
+        macro_steps=[
+            MacroStep(event=MacroEventKind.PRESS, key_code=17),
+            MacroStep(event=MacroEventKind.PRESS, key_code=67),
+            MacroStep(event=MacroEventKind.RELEASE, key_code=67),
+            MacroStep(event=MacroEventKind.RELEASE, key_code=17),
+            MacroStep(event=MacroEventKind.DELAY, delay_ms=120),
+        ],
+    )
+
+    assert shortcut.display_name == "Ctrl + P"
+    assert [step.display_name for step in macro.macro_steps][-1] == "Wait 120 ms"

@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from vaydeer_studio.core.keycodes import display_key_codes
+
 
 class AssignmentKind(StrEnum):
     """All assignment categories observed in the vendor application."""
@@ -52,6 +54,39 @@ class TriggerKind(StrEnum):
     HOLD = "hold"
     DOUBLE_TAP = "double_tap"
     CHORD = "chord"
+
+
+class MacroEventKind(StrEnum):
+    """Portable macro events retained in profiles until the device codec is known."""
+
+    PRESS = "press"
+    RELEASE = "release"
+    DELAY = "delay"
+
+
+class MacroStep(BaseModel):
+    """A typed, non-transmittable macro step for service and profile workflows."""
+
+    event: MacroEventKind
+    key_code: int | None = Field(default=None, ge=0, le=255)
+    delay_ms: int | None = Field(default=None, ge=0, le=60_000)
+
+    @model_validator(mode="after")
+    def validate_event_shape(self) -> MacroStep:
+        if self.event == MacroEventKind.DELAY:
+            if self.delay_ms is None:
+                raise ValueError("a delay macro event needs delay_ms")
+            if self.key_code is not None:
+                raise ValueError("a delay macro event cannot contain a key code")
+        elif self.key_code is None:
+            raise ValueError("a key macro event needs key_code")
+        return self
+
+    @property
+    def display_name(self) -> str:
+        if self.event == MacroEventKind.DELAY:
+            return f"Wait {self.delay_ms} ms"
+        return f"{self.event.value.title()} {display_key_codes([self.key_code or 0])}"
 
 
 class DeviceInfo(BaseModel):
@@ -104,6 +139,8 @@ class KeyAssignment(BaseModel):
     subtype: int = Field(default=0xFF, ge=0, le=255)
     trigger_type: int = Field(default=0, ge=0, le=255)
     payload: list[int] = Field(default_factory=list)
+    action_data: str = Field(default="", max_length=1024)
+    macro_steps: list[MacroStep] = Field(default_factory=list)
     support: SupportLevel = SupportLevel.ON_DEVICE
     notes: str = ""
 
@@ -114,6 +151,10 @@ class KeyAssignment(BaseModel):
             raise ValueError("assignment bytes must fit in one byte")
         if self.kind == AssignmentKind.DISABLED and (self.key_codes or self.payload):
             raise ValueError("disabled assignments cannot contain payload bytes")
+        if self.kind == AssignmentKind.DISABLED and (self.action_data or self.macro_steps):
+            raise ValueError("disabled assignments cannot contain action data")
+        if self.macro_steps and self.kind != AssignmentKind.MACRO:
+            raise ValueError("only macro assignments can contain macro steps")
         if self.kind == AssignmentKind.COMBINATION and len(self.key_codes) < 2:
             raise ValueError("a key combination needs at least two key codes")
         single_key_kinds = {
@@ -148,7 +189,11 @@ class KeyAssignment(BaseModel):
         if self.kind == AssignmentKind.DISABLED:
             return "Disabled"
         if self.key_codes:
-            return " + ".join(f"0x{code:02X}" for code in self.key_codes)
+            return display_key_codes(self.key_codes)
+        if self.kind == AssignmentKind.MACRO and self.macro_steps:
+            return "Macro"
+        if self.action_data:
+            return self.action_data.splitlines()[0][:24]
         return self.kind.value.replace("_", " ").title()
 
 
@@ -281,7 +326,7 @@ def factory_jp1011_profile() -> Profile:
         KeyAssignment(key_index=index, label=labels[index], kind=AssignmentKind.KEYBOARD, key_codes=[code])
         for index, code in enumerate(codes)
     ]
-    return Profile(name="JP-1011 Factory", layers=[Layer(index=0, name="0", assignments=assignments)])
+    return Profile(name="JP-1011 Factory", layers=[Layer(index=0, name="Default", assignments=assignments)])
 
 
 def jsonable(model: BaseModel) -> dict[str, Any]:

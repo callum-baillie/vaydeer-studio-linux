@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.5 - 2026-07-16
+
+- Rework the desktop workspace around a selectable JP-1011 physical keypad,
+  readable key values, profile layers, and distinct onboard and Linux-side
+  action flows.
+- Add physical-keyboard capture for key values, portable macro recording and
+  manual macro steps, binding trigger/window controls, and live tester
+  press/lift animation.
+- Show host-local `vaydeer-studiod` installation, running, reachability, and
+  login-start status. The app can install and enable its user unit from the
+  Devices screen without invoking `sudo`; scoped udev permission setup remains
+  explicit.
+
 ## 0.1.4 - 2026-07-16
 
 - Connect the live key tester to the JP-1011 vendor-event service instead of

@@ -23,7 +23,7 @@ _refs: list[StudioController] = []
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--page", type=int, default=0, choices=range(7))
+    parser.add_argument("--page", type=int, default=0, choices=range(6))
     parser.add_argument("--output", type=Path, default=Path("screenshots/mock-jp1011.png"))
     parser.add_argument("--live", action="store_true", help="Render the connected keypad without writing to it")
     args = parser.parse_args()

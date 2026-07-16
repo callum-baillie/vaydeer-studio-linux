@@ -20,7 +20,8 @@ keeps it open through a small user service.
 ## Features
 
 - Device inspection, layers, layer names, and current mappings.
-- A physical 3-by-3 JP-1011 editor with layer tabs and a diff review.
+- A physical 3-by-3 JP-1011 editor with readable values, keyboard capture,
+  layer controls, and a diff review.
 - Stable onboard single keys, modifiers, combinations, media/system keys, and
   disabled keys for the observed JP-1011 firmware `1.0.2` / bootloader `0.2.1`.
 - Timestamped open JSON backups, restore staging, dry-run packets, and
@@ -28,6 +29,8 @@ keeps it open through a small user service.
 - Portable JSON/YAML profiles and an XDG-backed profile library.
 - Linux-side launch, URL, file, directory, command, notification, script, and
   software-text bindings handled by `vaydeer-studiod`.
+- Host-local user-service state for installation, current runtime, control
+  socket reachability, and login startup, with a no-`sudo` user-unit install.
 - Mock JP-1011 mode for trying the complete interface without hardware.
 - Live tester, diagnostics export, a scoped udev rule, desktop entry, MIME
   registration, and systemd user service.
@@ -131,11 +134,17 @@ entries, and a user unit. `make run` is a mock-mode shortcut.
 
 ## First run
 
-1. Connect the keypad and start `vaydeer-studio.service`.
-2. Open **Devices** and confirm model, firmware, permissions, and keepalive.
-3. Read mappings, select a layer/key, and edit a portable profile.
-4. Use **Preview apply** to create a backup and inspect the diff.
-5. For real hardware, run the displayed CLI command and type `APPLY` in the
+1. Connect the keypad and open **Devices**. The local Vaydeer service panel
+   identifies the host running the app and reports whether `vaydeer-studiod` is
+   installed, running, reachable, and enabled at login.
+2. Select **Install user service** there when the user unit is absent. This
+   writes and enables only the per-user service; it never invokes `sudo`.
+   Install the scoped udev rule with `./scripts/install.sh` when permissions
+   are not yet granted, then reconnect the keypad.
+3. Confirm model, firmware, permissions, and keepalive.
+4. Read mappings, select a layer/key, and edit a portable profile.
+5. Use **Preview apply** to create a backup and inspect the diff.
+6. For real hardware, run the displayed CLI command and type `APPLY` in the
    terminal after reviewing its backup path, mapping, diff, and packet list.
 
 Every backup is versioned JSON under the XDG data directory, normally
