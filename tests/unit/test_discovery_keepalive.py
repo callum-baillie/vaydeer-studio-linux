@@ -1,8 +1,19 @@
 from __future__ import annotations
 
 import errno
+import os
+from pathlib import Path
 
-from vaydeer_studio.devices.discovery import EVENT_USAGE, VENDOR_USAGE_PAGE, HidInterface, select_keepalive_interface
+from vaydeer_studio.devices.discovery import (
+    COMMAND_USAGE,
+    EVENT_USAGE,
+    VENDOR_USAGE_PAGE,
+    HidInterface,
+    discover_linux_hidraw,
+    open_readonly_cloexec,
+    select_command_interface,
+    select_keepalive_interface,
+)
 from vaydeer_studio.service.keepalive import KeepaliveManager, KeepaliveState
 
 
@@ -17,6 +28,34 @@ def test_keepalive_selects_only_interface_two_with_vendor_usage() -> None:
         event_interface(),
     ]
     assert select_keepalive_interface(interfaces) == event_interface()
+
+
+def test_command_interface_selects_only_interface_zero_with_vendor_usage() -> None:
+    command = HidInterface("/dev/hidraw5", 0x0483, 0x5752, 0, VENDOR_USAGE_PAGE, COMMAND_USAGE)
+    assert select_command_interface([event_interface(), command]) == command
+
+
+def test_sysfs_discovery_reads_interface_number_and_vendor_usage(tmp_path: Path) -> None:
+    sys_class = tmp_path / "sys" / "class" / "hidraw"
+    sys_class.mkdir(parents=True)
+    hid_device = tmp_path / "sys" / "devices" / "usb" / "1-1" / "1-1:1.2" / "0003:0483:5752.0001"
+    hid_device.mkdir(parents=True)
+    (hid_device / "uevent").write_text("HID_ID=0003:00000483:00005752\n", encoding="utf-8")
+    (hid_device / "report_descriptor").write_bytes(bytes([0x06, 0x00, 0xFF, 0x09, 0x02]))
+    (sys_class / "hidraw12").mkdir()
+    (sys_class / "hidraw12" / "device").symlink_to(hid_device, target_is_directory=True)
+
+    interfaces = discover_linux_hidraw(sys_class, Path("/dev/mock"))
+    assert interfaces == [
+        HidInterface("/dev/mock/hidraw12", 0x0483, 0x5752, 2, VENDOR_USAGE_PAGE, EVENT_USAGE, bytes([6, 0, 255, 9, 2]))
+    ]
+
+
+def test_keepalive_open_uses_readonly_cloexec(monkeypatch) -> None:
+    captured: list[tuple[str, int]] = []
+    monkeypatch.setattr(os, "open", lambda path, flags: captured.append((path, flags)) or 99)
+    assert open_readonly_cloexec("/dev/hidraw42") == 99
+    assert captured == [("/dev/hidraw42", os.O_RDONLY | os.O_CLOEXEC)]
 
 
 def test_keepalive_opens_readonly_selected_node_and_handles_unplug() -> None:

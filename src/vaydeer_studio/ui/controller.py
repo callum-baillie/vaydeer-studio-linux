@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -93,6 +94,13 @@ class StudioController(QObject):
             self._status = "Vaydeer command interface connected (read-only inspection)"
         except Exception as error:
             self._status = f"Vaydeer detected but cannot open command interface: {error}"
+
+    def _close_command_transport(self) -> None:
+        if self._protocol is not None:
+            with suppress(Exception):
+                self._protocol.close()
+        self._protocol = None
+        self._transport = None
 
     def _refresh_service_status(self) -> None:
         if self.mock:
@@ -286,6 +294,26 @@ class StudioController(QObject):
         self.statusChanged.emit()
 
     @Slot()
+    def reconnectDevice(self) -> None:
+        if self.mock:
+            self.readFromDevice()
+            return
+        self._close_command_transport()
+        self._connect_readonly()
+        self._refresh_service_status()
+        if self._protocol is None:
+            self._status = "No Vaydeer command interface found after reconnect"
+        else:
+            try:
+                self._snapshot = self._protocol.read_snapshot()
+                self.profile = self.profile.model_copy(update={"layers": self._snapshot.layers})
+                self._status = "Device reconnected and configuration refreshed"
+            except Exception as error:
+                self._status = f"Reconnect inspection failed: {error}"
+        self.changed.emit()
+        self.statusChanged.emit()
+
+    @Slot()
     def previewApply(self) -> None:
         if self._protocol is None:
             self._status = "No connected device is available"
@@ -359,6 +387,10 @@ class StudioController(QObject):
     @Slot(int)
     def runBinding(self, index: int) -> None:
         if not 0 <= index < len(self.profile.linux_bindings):
+            return
+        if not self.mock:
+            self._status = "Linux bindings run from vaydeer-studiod when a physical key event arrives"
+            self.statusChanged.emit()
             return
         result = self.executor.execute(self.profile.linux_bindings[index])
         self._status = result.message if result.ok else f"Binding failed: {result.message}"

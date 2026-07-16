@@ -39,7 +39,14 @@ def test_service_ipc_dispatches_mock_binding(tmp_path: Path) -> None:
         if path.exists():
             break
         time.sleep(0.01)
-    assert request(path, {"method": "status"})["ok"]
+    status: dict[str, object] | None = None
+    for _ in range(50):
+        try:
+            status = request(path, {"method": "status"})
+            break
+        except ConnectionRefusedError:
+            time.sleep(0.01)
+    assert status is not None and status["ok"]
     binding = LinuxBinding(key_index=2, action=LinuxActionKind.URL, target="https://example.test")
     assert request(path, {"method": "set_bindings", "bindings": [binding.model_dump(mode="json")]})["ok"]
     event = bytes([0xFB, 0x03, 0, 2, 0])

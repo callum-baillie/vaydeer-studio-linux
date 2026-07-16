@@ -241,7 +241,7 @@ ApplicationWindow {
                                         Label { text: vaydeerBridge.device.model; color: window.ink; font.bold: true; font.pixelSize: 18 }
                                         Label { text: vaydeerBridge.device.usb + " • " + vaydeerBridge.device.keepalive; color: window.muted; font.pixelSize: 13 }
                                     }
-                                    Button { text: "Reconnect"; onClicked: vaydeerBridge.readFromDevice(); Accessible.name: "Reconnect and inspect device" }
+                                    Button { text: "Reconnect"; onClicked: vaydeerBridge.reconnectDevice(); Accessible.name: "Reconnect and inspect device" }
                                     Button { text: "Export diagnostics"; onClicked: vaydeerBridge.exportDiagnostics(); Accessible.name: "Export sanitized diagnostics" }
                                 }
                             }

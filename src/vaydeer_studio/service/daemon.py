@@ -7,6 +7,7 @@ import json
 import os
 import socket
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -46,6 +47,7 @@ class ServiceDaemon:
         self.executor = executor or BindingExecutor(mock_mode=mock)
         active_profile = ProfileStore().load_active()
         self.bindings = [] if active_profile is None else active_profile.linux_bindings
+        self.keepalive.set_event_listening(bool(self.bindings))
         self.mock_transport = MockJP1011Transport() if mock else None
         self._running = threading.Event()
 
@@ -133,14 +135,22 @@ class ServiceDaemon:
 
 
 def request(socket_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
-    client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        client.settimeout(0.25)
-        client.connect(str(socket_path))
-        client.sendall(json.dumps(payload).encode("utf-8"))
-        return json.loads(client.recv(1024 * 1024).decode("utf-8"))
-    finally:
-        client.close()
+    last_error: ConnectionRefusedError | None = None
+    for attempt in range(3):
+        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            client.settimeout(0.25)
+            client.connect(str(socket_path))
+            client.sendall(json.dumps(payload).encode("utf-8"))
+            return json.loads(client.recv(1024 * 1024).decode("utf-8"))
+        except ConnectionRefusedError as error:
+            last_error = error
+            if attempt < 2:
+                time.sleep(0.025)
+        finally:
+            client.close()
+    assert last_error is not None
+    raise last_error
 
 
 def main(argv: list[str] | None = None) -> int:
