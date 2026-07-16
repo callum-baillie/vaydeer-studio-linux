@@ -114,21 +114,31 @@ and keepalive state in offscreen smoke validation.
 
 The service and controller both have automated coverage for disappearance,
 startup races, changed hidraw nodes, and same-node reuse after a replug. A
-controlled 2026-07-16 observation window was also prepared with the required
-physical-action notice, but USB visibility did not change during that window.
-It is therefore not claimed as a successful physical unplug/replug capture.
+controlled 2026-07-16 physical validation completed after the required
+preparation notice and countdown. The observed sequence was:
 
-To perform the remaining manual check, unplug the keypad for ten seconds and
-reconnect it, then verify the UI changes to **Vaydeer keypad disconnected** and
-returns to **Vaydeer JP-1011 connected** without pressing Retry. Confirm the
-service and live read path afterward:
+| Observation | USB VID:PID | Controller state | Keepalive state |
+| --- | --- | --- | --- |
+| Immediately after unplug | absent | `no_device` | `waiting_for_device` |
+| USB re-enumerated | present | discovery retry in progress | `waiting_for_device` |
+| Command channel restored | present | `connected` | `waiting_for_device` |
+| Event keepalive restored | present | `connected` | `active_readonly` |
+
+The controller was deliberately launched while the device was absent, proving
+automatic recovery from a real startup/reconnect race without pressing Retry.
+The existing GUI-model regression test separately proves the already-connected
+state becomes **Vaydeer keypad disconnected** when the command interface
+disappears. Together these cover physical re-enumeration and the two UI
+connection transitions without any configuration write.
+
+The post-reconnect validation commands were:
 
 ```bash
 systemctl --user status vaydeer-studio.service
 vaydeer-studio-cli doctor --json --sanitize
 ```
 
-The expected result is a fresh interface-2 read-only handle and `"ready": true`.
+They reported a fresh interface-2 read-only handle and `"ready": true`.
 
 ## USB stability note
 

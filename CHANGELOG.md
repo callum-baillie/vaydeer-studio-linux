@@ -8,6 +8,8 @@
   when Linux reuses a node name after a physical replug.
 - Expand the first-run hardware setup report and document the sanitized live
   interface inventory and remaining manual reconnect validation.
+- Validate a real unplug/replug recovery: USB detection, controller discovery,
+  and the interface-2 read-only keepalive all recovered without a write.
 
 ## 0.1.1 - 2026-07-16
 
