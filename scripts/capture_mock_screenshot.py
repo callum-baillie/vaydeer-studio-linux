@@ -12,7 +12,7 @@ os.environ.setdefault("QT_QUICK_BACKEND", "software")
 
 from importlib.resources import files
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import QObject, QTimer, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -28,6 +28,8 @@ def main() -> int:
     parser.add_argument("--live", action="store_true", help="Render the connected keypad without writing to it")
     parser.add_argument("--press-key", type=int, choices=range(9), help="Capture a mock tester key while pressed")
     parser.add_argument("--pending-key", type=int, choices=range(9), help="Stage a visible mock mapping change")
+    parser.add_argument("--review", action="store_true", help="Open the reviewed-diff dialog for visual validation")
+    parser.add_argument("--light", action="store_true", help="Render the light theme for visual validation")
     parser.add_argument("--width", type=int, default=1440, help="Window width used for the rendered capture")
     parser.add_argument("--height", type=int, default=900, help="Window height used for the rendered capture")
     args = parser.parse_args()
@@ -44,11 +46,22 @@ def main() -> int:
     window = engine.rootObjects()[0]
     window.setProperty("width", args.width)
     window.setProperty("height", args.height)
+    if args.light:
+        window.setProperty("darkMode", False)
     window.setProperty("navIndex", args.page)
     if args.pending_key is not None:
         controller.selectKey(args.pending_key)
         controller.saveKey("Keyboard key", "Draft", "F13")
     controller.setActivePage(args.page)
+    if args.review:
+        if args.pending_key is None:
+            controller.selectKey(0)
+            controller.saveKey("Keyboard key", "Draft", "F13")
+        controller.previewApply()
+        dialog = window.findChild(QObject, "diffDialog")
+        if dialog is None:
+            return 1
+        dialog.open()
 
     def capture() -> None:
         image = application.primaryScreen().grabWindow(window.winId())

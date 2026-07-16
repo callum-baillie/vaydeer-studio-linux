@@ -123,12 +123,36 @@ ApplicationWindow {
 
     Dialog {
         id: diffDialog
+        objectName: "diffDialog"
         title: "Review proposed device changes"
         modal: true
         width: Math.min(window.width - 72, 760)
         height: Math.min(window.height - 110, 580)
         anchors.centerIn: parent
-        background: Rectangle { color: window.panel; radius: 6; border.color: window.line }
+        padding: 14
+        header: Rectangle {
+            implicitHeight: 48
+            color: window.panelRaised
+            border.width: 1
+            border.color: window.line
+            Label {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                text: diffDialog.title
+                color: window.ink
+                font.pixelSize: 15
+                font.bold: true
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+        }
+        background: Rectangle {
+            color: window.panel
+            radius: 6
+            border.width: 1
+            border.color: window.line
+        }
         contentItem: ColumnLayout {
             spacing: 12
             Label {
@@ -144,23 +168,33 @@ ApplicationWindow {
                 elide: Text.ElideMiddle
                 Layout.fillWidth: true
             }
-            ListView {
+            Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                clip: true
-                model: vaydeerBridge.previewLines
-                delegate: Rectangle {
-                    required property var modelData
-                    width: ListView.view.width
-                    height: diffText.implicitHeight + 16
-                    color: index % 2 === 0 ? window.panelRaised : "transparent"
-                    Label {
-                        id: diffText
-                        anchors.fill: parent
-                        anchors.margins: 8
-                        text: modelData
-                        color: window.ink
-                        wrapMode: Text.WordWrap
+                color: window.darkMode ? "#111920" : "#F7F9FA"
+                radius: 4
+                border.width: 1
+                border.color: window.line
+                ListView {
+                    anchors.fill: parent
+                    anchors.margins: 1
+                    clip: true
+                    model: vaydeerBridge.previewLines
+                    ScrollBar.vertical: ScrollBar { }
+                    delegate: Rectangle {
+                        required property var modelData
+                        required property int index
+                        width: ListView.view.width
+                        height: diffText.implicitHeight + 16
+                        color: index % 2 === 0 ? window.panelRaised : "transparent"
+                        Label {
+                            id: diffText
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            text: modelData
+                            color: window.ink
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
             }

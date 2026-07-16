@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.10 - 2026-07-16
+
+- Give the reviewed-device-change dialog explicit themed header and diff-list
+  surfaces. It now remains legible in both dark and light modes instead of
+  inheriting the desktop platform's light dialog palette.
+
 ## 0.1.9 - 2026-07-16
 
 - Preserve numeric keypad input during physical keyboard capture: Qt keypad
