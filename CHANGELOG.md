@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.12 - 2026-07-16
+
+- Allow a compatible, connected keypad to be written directly from the desktop
+  application after a reviewed diff and typed in-app `APPLY` confirmation.
+  Backups, capability guards, known-command restrictions, exclusive sessions,
+  and read-back verification remain mandatory.
+- Invalidate an attempted write preview after a disconnect or write failure, so
+  users must re-read and review the device instead of retrying a stale plan.
+
 ## 0.1.11 - 2026-07-16
 
 - Remove deprecated implicit signal arguments from keypad handlers and declare

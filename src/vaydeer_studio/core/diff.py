@@ -50,7 +50,9 @@ def _layer_diff(layer_index: int, before: Layer | None, after: Layer | None) -> 
         new = after_keys.get(key_index)
         old_name = old.display_name if old else "Disabled"
         new_name = new.display_name if new else "Disabled"
-        if old is None or new is None or old.model_dump() != new.model_dump():
+        # Notes explain an assignment in the local profile but are never
+        # serialized to device storage, so they must not fail read-back.
+        if old is None or new is None or old.model_dump(exclude={"notes"}) != new.model_dump(exclude={"notes"}):
             output.append(DiffItem(layer_index, key_index, old_name, new_name, "assignment"))
     return output
 

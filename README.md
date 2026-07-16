@@ -57,8 +57,9 @@ protocol core and has regression tests proving it cannot be built. Unknown
 commands are rejected too. Before any eligible configuration write, Vaydeer
 Studio reads the device, checks capability, backs it up, creates a human
 readable diff and packet preview, requires confirmation, commits, reads back,
-and compares the result. The desktop UI will never write real hardware: use the
-CLI's explicit terminal confirmation for a real write.
+and compares the result. The desktop UI requires a reviewed diff and a typed
+`APPLY` confirmation before a real write; the CLI retains its own explicit
+terminal confirmation.
 
 See [docs/safety.md](docs/safety.md) for the full boundary.
 

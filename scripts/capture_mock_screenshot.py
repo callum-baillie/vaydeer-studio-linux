@@ -38,6 +38,9 @@ def main() -> int:
     parser.add_argument("--press-key", type=int, choices=range(9), help="Capture a mock tester key while pressed")
     parser.add_argument("--pending-key", type=int, choices=range(9), help="Stage a visible mock mapping change")
     parser.add_argument("--review", action="store_true", help="Open the reviewed-diff dialog for visual validation")
+    parser.add_argument(
+        "--confirm-write", action="store_true", help="Open the in-app write confirmation for visual validation"
+    )
     parser.add_argument("--light", action="store_true", help="Render the light theme for visual validation")
     parser.add_argument("--click-key", type=int, choices=range(9), help="Click a rendered keypad key before capture")
     parser.add_argument("--width", type=int, default=1440, help="Window width used for the rendered capture")
@@ -63,12 +66,13 @@ def main() -> int:
         controller.selectKey(args.pending_key)
         controller.saveKey("Keyboard key", "Draft", "F13")
     controller.setActivePage(args.page)
-    if args.review:
+    if args.review or args.confirm_write:
         if args.pending_key is None:
             controller.selectKey(0)
             controller.saveKey("Keyboard key", "Draft", "F13")
         controller.previewApply()
-        dialog = window.findChild(QObject, "diffDialog")
+        dialog_name = "hardwareWriteDialog" if args.confirm_write else "diffDialog"
+        dialog = window.findChild(QObject, dialog_name)
         if dialog is None:
             return 1
         dialog.open()

@@ -45,6 +45,15 @@ def test_backup_format_and_diff(tmp_path: Path) -> None:
     assert store.load(path).model_dump(mode="json") == before.model_dump(mode="json")
 
 
+def test_device_diff_ignores_local_assignment_notes() -> None:
+    protocol = VaydeerProtocol(MockJP1011Transport())
+    before = protocol.read_snapshot()
+    assignment = before.layer(0).assignment_for(0).model_copy(update={"notes": "A local editor explanation"})
+    after = before.with_layer(before.layer(0).with_assignment(assignment))
+
+    assert snapshot_diff(before, after) == []
+
+
 def test_profile_device_validation_identifies_mismatch() -> None:
     profile = factory_jp1011_profile().model_copy(update={"key_count": 4})
     issues = validate_for_device(profile, key_count=9, model="JP-1011")

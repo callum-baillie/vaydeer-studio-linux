@@ -95,6 +95,6 @@ def safe_apply(
 
 
 def packet_lines(packets: tuple[bytes, ...]) -> list[str]:
-    """Compact, exact packet display for terminal confirmation without a raw sender."""
+    """Compact, exact packet display for confirmation views without a raw sender."""
 
     return [" ".join(f"{byte:02x}" for byte in packet.rstrip(bytes([0]))) for packet in packets]

@@ -10,7 +10,7 @@ cannot bypass a device safeguard.
 | `devices/` | Sysfs report-descriptor discovery, bounded session-serialized Linux hidraw transport, capability table, declarative layouts, diagnostics, and mock JP-1011. |
 | `core/` | Profile schema, portable JSON/YAML, backup store, diff, and transactional apply preparation. |
 | `service/` | Interface-2 read-only keepalive, binding executor, hotplug tick loop, and Unix-socket IPC. |
-| `ui/` | QML views and a Qt controller; real hardware is inspection-only from the desktop shell. |
+| `ui/` | QML views and a Qt controller; reviewed hardware writes require typed in-app confirmation. |
 | `cli/` | Inspection, backup, dry run, profile validation, restore staging, and explicitly confirmed writes. |
 
 `prepare_apply()` reads the live snapshot, matches a known capability, saves a

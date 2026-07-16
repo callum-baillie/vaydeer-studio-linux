@@ -137,8 +137,8 @@ send them to a physical keypad.
 
 Saving a profile is local and synchronizes its Linux bindings to the service
 when reachable. It never writes to the keypad. Applying on-device mappings
-still requires the existing backup, diff review, terminal confirmation for
-real hardware, write, and read-back verification sequence.
+requires the existing backup, diff review, typed in-app `APPLY` confirmation,
+write, and read-back verification sequence.
 
 ## Future Work
 

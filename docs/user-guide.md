@@ -24,10 +24,11 @@ message names the resulting explicit device value. While the mapping page is
 open, pressing a physical keypad key selects it in the editor without changing
 the device. Macro recording captures computer-keyboard press/release timing
 and keeps it as portable experimental profile data until its device payload is
-independently verified. It is never sent to the keypad. Select **Preview
-apply** to read the device, create a backup, and populate the diff. In mock
-mode Apply commits and verifies the change. With a physical keypad, copy the
-indicated CLI command and perform the typed terminal confirmation.
+independently verified. It is never sent to the keypad. Select **Review
+changes** to read the device, create a backup, and populate the diff. With a
+physical keypad, select **Continue**, type `APPLY` in the confirmation dialog,
+and choose **Write to keypad**. The application then commits and verifies the
+change. The CLI retains its separate typed terminal confirmation flow.
 
 ## Profiles
 

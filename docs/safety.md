@@ -24,8 +24,9 @@ protocol boundary.
 3. Read all layers, names, and assignments.
 4. Save an XDG timestamped JSON backup.
 5. Produce a packet list and human-readable diff.
-6. Require confirmation. Real writes require `--confirm-real-write` plus the
-   typed terminal word `APPLY`.
+6. Require confirmation. Desktop writes require a reviewed diff and the typed
+   word `APPLY` in the in-app confirmation dialog. CLI writes require
+   `--confirm-real-write` plus the typed terminal word `APPLY`.
 7. Write stable assignments/layer names, commit the layer, and read back.
 8. Compare the expected snapshot to the actual snapshot and retain the backup.
 
@@ -34,8 +35,9 @@ This prevents an independent Studio CLI or desktop inspection from interleaving
 with a multi-frame operation; stale interface-0 response frames are discarded
 before the session's first known request.
 
-The graphical application performs no real write; this makes the terminal
-review an intentional, auditable boundary. A dry run never writes.
+The graphical application writes only after its in-app typed confirmation. The
+same core confirmation boundary, known-command allowlist, backup, and read-back
+verification apply to desktop and CLI writes. A dry run never writes.
 
 ## Backups and diagnostics
 

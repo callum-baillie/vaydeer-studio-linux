@@ -548,7 +548,7 @@ class StudioController(QObject):
             "keepalive": self._service_keepalive,
             "usb": "Connected" if self._connection["state"] == "connected" else "Connected (read-only)",
             "permissions": "Granted (mock)" if self.mock else "Granted; verified by diagnostics",
-            "writable": capability.writable and self.mock,
+            "writable": capability.writable,
             "warning": (
                 ""
                 if self._service_keepalive in {"active_readonly", "Mock active"}
@@ -1282,24 +1282,35 @@ class StudioController(QObject):
         self.statusChanged.emit()
 
     @Slot()
-    def applyPreview(self) -> None:
+    def applyConfirmedPreview(self) -> None:
+        """Apply a reviewed preview after the QML confirmation dialog is accepted."""
+
         if self._preview is None:
             self._status = "Create and review a diff first"
-        elif not self.mock:
+        elif self._protocol is None:
+            self._preview = None
             self._status = (
-                "Hardware writes require terminal confirmation: vaydeer-studio-cli apply-profile --confirm-real-write"
+                "The device disconnected before the write. No change was sent; prepare a new diff after reconnecting."
             )
+            self.previewChanged.emit()
         else:
             try:
-                result = apply_prepared(self._protocol, self._preview, confirmed=True)  # type: ignore[arg-type]
+                result = apply_prepared(self._protocol, self._preview, confirmed=True)
                 self._snapshot = result.verified
                 self._adopt_device_layers(result.verified)
-                self._status = f"Mock write verified. Backup preserved at {result.preview.backup_path}"
+                write_target = "Mock write" if self.mock else "Device write"
+                self._status = f"{write_target} verified. Backup preserved at {result.preview.backup_path}"
                 self._preview = None
                 self.changed.emit()
                 self.previewChanged.emit()
             except Exception as error:
+                # A failure may follow a partial write, so never leave a stale
+                # preview available for a retry against an unknown device state.
+                self._snapshot = self._load_snapshot()
+                self._preview = None
                 self._status = f"Apply failed: {error}"
+                self.changed.emit()
+                self.previewChanged.emit()
         self.statusChanged.emit()
 
     @Slot()

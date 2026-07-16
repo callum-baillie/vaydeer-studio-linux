@@ -80,6 +80,44 @@ def test_controller_edits_profile_and_generates_diff() -> None:
     assert any("Num 7 -> A" in line for line in controller.previewLines)
 
 
+def test_real_mode_controller_applies_a_reviewed_preview_after_gui_confirmation(monkeypatch) -> None:
+    monkeypatch.setattr(controller_module, "discover_linux_hidraw", lambda: _interfaces("1-2:1.0"))
+    monkeypatch.setattr(controller_module, "open_command_transport", lambda _path: MockJP1011Transport())
+    monkeypatch.setattr(controller_module, "service_request", _active_service)
+    controller = StudioController(mock=False)
+    _stop_controller_timers(controller)
+
+    controller.saveKey("Keyboard key", "A", "A")
+    controller.previewApply()
+    assert controller.previewLines
+
+    controller.applyConfirmedPreview()
+
+    assert controller.dirty is False
+    assert controller.previewLines == []
+    assert controller.keys[0]["label"] == "A"
+    assert controller.statusMessage.startswith("Device write verified.")
+
+
+def test_failed_gui_write_invalidates_the_reviewed_preview(monkeypatch) -> None:
+    transport = MockJP1011Transport()
+    transport.fail_after_writes = 0
+    monkeypatch.setattr(controller_module, "discover_linux_hidraw", lambda: _interfaces("1-2:1.0"))
+    monkeypatch.setattr(controller_module, "open_command_transport", lambda _path: transport)
+    monkeypatch.setattr(controller_module, "service_request", _active_service)
+    controller = StudioController(mock=False)
+    _stop_controller_timers(controller)
+
+    controller.saveKey("Keyboard key", "A", "A")
+    controller.previewApply()
+    assert controller.previewLines
+
+    controller.applyConfirmedPreview()
+
+    assert controller.previewLines == []
+    assert controller.statusMessage.startswith("Apply failed:")
+
+
 def test_mapping_refresh_preserves_pending_draft_and_exposes_per_key_sync_state() -> None:
     controller = StudioController(mock=True)
     controller.saveKey("Keyboard key", "A", "A")

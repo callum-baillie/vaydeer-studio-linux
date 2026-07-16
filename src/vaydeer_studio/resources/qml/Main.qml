@@ -203,9 +203,107 @@ ApplicationWindow {
                 Item { Layout.fillWidth: true }
                 Button { text: "Close"; onClicked: diffDialog.close() }
                 Button {
-                    text: vaydeerBridge.mockMode ? "Apply in mock" : "Apply from terminal"
+                    text: vaydeerBridge.mockMode ? "Apply in mock" : "Continue"
                     enabled: vaydeerBridge.previewLines.length > 0
-                    onClicked: vaydeerBridge.applyPreview()
+                    onClicked: {
+                        if (vaydeerBridge.mockMode) {
+                            vaydeerBridge.applyConfirmedPreview()
+                            diffDialog.close()
+                        } else {
+                            diffDialog.close()
+                            hardwareWriteDialog.open()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: hardwareWriteDialog
+        objectName: "hardwareWriteDialog"
+        title: "Confirm device write"
+        modal: true
+        width: Math.min(window.width - 72, 600)
+        anchors.centerIn: parent
+        padding: 14
+        closePolicy: Popup.CloseOnEscape
+        onOpened: {
+            hardwareWritePhrase.text = ""
+            hardwareWritePhrase.forceActiveFocus()
+        }
+        header: Rectangle {
+            implicitHeight: 48
+            color: window.panelRaised
+            border.width: 1
+            border.color: window.line
+            Label {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                text: hardwareWriteDialog.title
+                color: window.ink
+                font.pixelSize: 15
+                font.bold: true
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+        }
+        background: Rectangle {
+            color: window.panel
+            radius: 6
+            border.width: 1
+            border.color: window.line
+        }
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: "This sends the reviewed mappings to the connected keypad, then reads them back for verification."
+                color: window.ink
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+            }
+            Label {
+                text: "Backup retained at: " + vaydeerBridge.backupPath
+                color: window.muted
+                wrapMode: Text.WrapAnywhere
+                Layout.fillWidth: true
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: confirmationCopy.implicitHeight + 20
+                color: Qt.rgba(window.amber.r, window.amber.g, window.amber.b, window.darkMode ? 0.13 : 0.1)
+                border.width: 1
+                border.color: Qt.rgba(window.amber.r, window.amber.g, window.amber.b, 0.5)
+                radius: 4
+                Label {
+                    id: confirmationCopy
+                    anchors.fill: parent
+                    anchors.margins: 10
+                    text: "Type APPLY to confirm this hardware write. Firmware, bootloader, and unknown commands are never sent."
+                    color: window.ink
+                    wrapMode: Text.WordWrap
+                }
+            }
+            TextField {
+                id: hardwareWritePhrase
+                Layout.fillWidth: true
+                placeholderText: "Type APPLY"
+                selectByMouse: true
+                Accessible.name: "Type APPLY to confirm the device write"
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                Button { text: "Cancel"; onClicked: hardwareWriteDialog.close() }
+                Button {
+                    text: "Write to keypad"
+                    enabled: hardwareWritePhrase.text.trim() === "APPLY"
+                    Accessible.name: "Confirm and write reviewed mappings to the keypad"
+                    onClicked: {
+                        hardwareWriteDialog.close()
+                        vaydeerBridge.applyConfirmedPreview()
+                    }
                 }
             }
         }
