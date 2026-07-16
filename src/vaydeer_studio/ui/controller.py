@@ -49,7 +49,7 @@ from vaydeer_studio.service.daemon import default_socket_path
 from vaydeer_studio.service.daemon import request as service_request
 
 LOGGER = logging.getLogger(__name__)
-_STARTUP_RETRY_DELAYS_MS = (250, 500, 1_000, 1_500, 2_000)
+_CONNECTION_RETRY_INTERVAL_MS = 1_000
 _CONNECTION_HEALTH_INTERVAL_MS = 1_500
 _TESTER_POLL_INTERVAL_MS = 150
 _TESTER_MINIMUM_PRESS_MS = 150
@@ -126,16 +126,19 @@ class StudioController(QObject):
             "reachable": False,
             "detail": "Checking the local user service.",
         }
-        self._retry_attempt = 0
         self._diagnostic_summary = "Run diagnostics to inspect the current Linux hardware setup."
         self._setup_checks: list[dict[str, str]] = self._default_setup_checks()
+        self._last_connection_error: str | None = None
+        self._connection_timer: QTimer | None = None
+        self._health_timer: QTimer | None = None
+        self._tester_timer: QTimer | None = None
         if mock:
             self._transport = MockJP1011Transport()
             self._protocol = VaydeerProtocol(self._transport)
             self._snapshot = self._load_snapshot()
             self._set_connection("connected", "Mock JP-1011 connected", "Mock transport is ready.", "", True)
         else:
-            self._attempt_connection(schedule_retry=True)
+            self._attempt_connection()
         if mock:
             self._refresh_service_status()
             self._setup_checks = [
@@ -165,9 +168,10 @@ class StudioController(QObject):
         self._macro_recording = False
         self._macro_steps: list[MacroStep] = []
         self.executor = BindingExecutor(mock_mode=mock)
-        self._health_timer: QTimer | None = None
-        self._tester_timer: QTimer | None = None
         if not mock and QGuiApplication.instance() is not None:
+            self._connection_timer = QTimer(self)
+            self._connection_timer.setInterval(_CONNECTION_RETRY_INTERVAL_MS)
+            self._connection_timer.timeout.connect(self._retry_connection_poll)
             self._health_timer = QTimer(self)
             self._health_timer.setInterval(_CONNECTION_HEALTH_INTERVAL_MS)
             self._health_timer.timeout.connect(self._monitor_device_connection)
@@ -175,6 +179,7 @@ class StudioController(QObject):
             self._tester_timer = QTimer(self)
             self._tester_timer.setInterval(_TESTER_POLL_INTERVAL_MS)
             self._tester_timer.timeout.connect(self._poll_tester_events)
+        self._ensure_connection_polling()
 
     def _set_connection(self, state: str, title: str, message: str, recovery: str, connected: bool) -> None:
         self._connection = {
@@ -185,21 +190,43 @@ class StudioController(QObject):
             "connected": connected,
         }
 
-    def _attempt_connection(self, *, schedule_retry: bool) -> None:
+    def _attempt_connection(self, *, inspect_service: bool = True) -> None:
         self._close_command_transport()
         self._connect_readonly()
-        self._refresh_service_status()
+        self._refresh_service_status(inspect_unit=inspect_service)
         if self._protocol is not None:
             self._snapshot = self._load_snapshot()
-        should_retry = (
-            not bool(self._connection["connected"])
-            and schedule_retry
-            and self._retry_attempt < len(_STARTUP_RETRY_DELAYS_MS)
-        )
-        if should_retry and QGuiApplication.instance() is not None:
-            delay = _STARTUP_RETRY_DELAYS_MS[self._retry_attempt]
-            self._retry_attempt += 1
-            QTimer.singleShot(delay, self.retryDetection)
+        if bool(self._connection["connected"]):
+            self._last_connection_error = None
+            self._stop_connection_polling()
+        else:
+            self._ensure_connection_polling()
+
+    def _ensure_connection_polling(self) -> None:
+        """Keep retrying read-only discovery until the initial device read succeeds."""
+
+        if self.mock or bool(self._connection["connected"]):
+            return
+        if self._connection_timer is not None and not self._connection_timer.isActive():
+            self._connection_timer.start()
+
+    def _stop_connection_polling(self) -> None:
+        if self._connection_timer is not None and self._connection_timer.isActive():
+            self._connection_timer.stop()
+
+    def _retry_connection_poll(self) -> None:
+        if self.mock or bool(self._connection["connected"]):
+            self._stop_connection_polling()
+            return
+        self._attempt_connection(inspect_service=False)
+        self.changed.emit()
+        self.statusChanged.emit()
+
+    def _log_connection_failure(self, context: str, message: str) -> None:
+        error = f"{context}: {message}"
+        if error != self._last_connection_error:
+            LOGGER.warning("%s", error)
+            self._last_connection_error = error
 
     def _connect_readonly(self) -> None:
         """Open only the known vendor command interface for safe inspection."""
@@ -242,7 +269,7 @@ class StudioController(QObject):
             )
             self._set_connection(state, "Vaydeer command interface inaccessible", message, recovery, False)
             self._status = f"Vaydeer detected but cannot open command interface: {message}"
-            LOGGER.warning("Vaydeer command interface open failed: %s", message)
+            self._log_connection_failure("Vaydeer command interface open failed", message)
 
     def _close_command_transport(self) -> None:
         if self._protocol is not None:
@@ -276,12 +303,12 @@ class StudioController(QObject):
                     False,
                 )
                 self._status = "Vaydeer keypad disconnected; waiting for reconnect"
+            self._ensure_connection_polling()
             self.changed.emit()
             self.statusChanged.emit()
             return
         if self._protocol is None or interface.instance_key != self._command_instance_key:
-            self._retry_attempt = 0
-            self._attempt_connection(schedule_retry=False)
+            self._attempt_connection(inspect_service=False)
             self.changed.emit()
             self.statusChanged.emit()
             return
@@ -476,7 +503,7 @@ class StudioController(QObject):
                     False,
                 )
                 self._status = f"Device inspection failed: {message}"
-                LOGGER.warning("Vaydeer protocol initialization failed: %s", message)
+                self._log_connection_failure("Vaydeer protocol initialization failed", message)
         return self._snapshot
 
     @Property(dict, notify=changed)
@@ -850,7 +877,7 @@ class StudioController(QObject):
     def readFromDevice(self) -> None:
         if self._protocol is None:
             self._status = "No device is available to read; retrying detection"
-            self._attempt_connection(schedule_retry=True)
+            self._attempt_connection()
         else:
             try:
                 self._snapshot = self._protocol.read_snapshot()
@@ -867,7 +894,7 @@ class StudioController(QObject):
                 )
                 self._close_command_transport()
                 self._status = f"Read failed: {message}; reconnecting"
-                self._attempt_connection(schedule_retry=True)
+                self._attempt_connection()
         self.changed.emit()
         self.statusChanged.emit()
 
@@ -876,9 +903,8 @@ class StudioController(QObject):
         if self.mock:
             self.readFromDevice()
             return
-        self._retry_attempt = 0
         self._status = "Retrying Vaydeer device detection"
-        self._attempt_connection(schedule_retry=True)
+        self._attempt_connection()
         self.changed.emit()
         self.statusChanged.emit()
 
@@ -886,7 +912,7 @@ class StudioController(QObject):
     def retryDetection(self) -> None:
         if self.mock:
             return
-        self._attempt_connection(schedule_retry=True)
+        self._attempt_connection()
         self.changed.emit()
         self.statusChanged.emit()
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.7 - 2026-07-16
+
+- Continue read-only command-interface discovery after startup until the
+  already-connected keypad has been inspected successfully; a USB replug is no
+  longer required after a transient HID or protocol initialization delay.
+- Stop the retry poll immediately after a successful read and suppress repeated
+  identical connection warnings while recovery is in progress.
+
 ## 0.1.6 - 2026-07-16
 
 - Keep each JP-1011 key delegate in its assigned grid cell while animating the
