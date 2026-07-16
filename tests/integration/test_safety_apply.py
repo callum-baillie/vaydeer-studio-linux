@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,23 @@ from vaydeer_studio.core.models import AssignmentKind, KeyAssignment
 from vaydeer_studio.core.safety import apply_prepared, prepare_apply
 from vaydeer_studio.devices.mock import MockJP1011Transport
 from vaydeer_studio.protocol.client import VaydeerProtocol
+
+
+class SessionCountingTransport:
+    def __init__(self) -> None:
+        self.inner = MockJP1011Transport()
+        self.sessions = 0
+
+    def transact(self, report: bytes, timeout_ms: int) -> bytes:
+        return self.inner.transact(report, timeout_ms)
+
+    def close(self) -> None:
+        self.inner.close()
+
+    @contextmanager
+    def session(self, _timeout_ms: int) -> Iterator[None]:
+        self.sessions += 1
+        yield
 
 
 def proposed_change(protocol: VaydeerProtocol):
@@ -45,3 +64,14 @@ def test_partial_write_reports_preserved_backup(tmp_path: Path) -> None:
     with pytest.raises(PartialWriteError, match="Backup remains"):
         apply_prepared(protocol, preview, confirmed=True)
     assert preview.backup_path.exists()
+
+
+def test_apply_holds_one_session_across_writes_and_readback(tmp_path: Path) -> None:
+    transport = SessionCountingTransport()
+    protocol = VaydeerProtocol(transport)
+    preview = prepare_apply(protocol, proposed_change(protocol), BackupStore(tmp_path))
+    before_apply = transport.sessions
+
+    apply_prepared(protocol, preview, confirmed=True)
+
+    assert transport.sessions == before_apply + 1

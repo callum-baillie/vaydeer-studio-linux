@@ -106,9 +106,7 @@ def collect_diagnostics(
         DiagnosticCheck(
             "user_service",
             "pass" if service["available"] else "warn",
-            "Vaydeer keepalive service is reachable"
-            if service["available"]
-            else service["summary"],
+            "Vaydeer keepalive service is reachable" if service["available"] else service["summary"],
         )
     )
     protocol = _probe_protocol(command, reports, transport_factory) if include_protocol else {"attempted": False}

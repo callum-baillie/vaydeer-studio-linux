@@ -6,6 +6,7 @@ import errno
 import fcntl
 import os
 import select
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import AbstractContextManager, contextmanager, suppress
@@ -19,6 +20,7 @@ Selector = Callable[
     tuple[list[int], list[int], list[int]],
 ]
 CommandLock = Callable[[int, int], AbstractContextManager[None]]
+MAX_STALE_RESPONSE_FRAMES = 256
 
 
 class HidApiCommandTransport:
@@ -42,6 +44,12 @@ class HidApiCommandTransport:
             return bytes(self._handle.read(64, timeout_ms))
         except OSError as error:
             raise DeviceError(f"HID command transport failed: {error}") from error
+
+    @contextmanager
+    def session(self, _timeout_ms: int) -> Iterator[None]:
+        """Provide the protocol session API when hidapi is used elsewhere."""
+
+        yield
 
     def close(self) -> None:
         close = getattr(self._handle, "close", None)
@@ -69,6 +77,8 @@ class HidrawCommandTransport:
         self._reader = reader
         self._selector = selector
         self._command_lock = command_lock or _lock_command_fd
+        self._local_lock = threading.RLock()
+        self._session_depth = 0
         try:
             self._fd: int | None = opener(path, os.O_RDWR | os.O_CLOEXEC)
         except PermissionError as error:
@@ -78,25 +88,69 @@ class HidrawCommandTransport:
 
     def transact(self, report: bytes, timeout_ms: int) -> bytes:
         _validate_command_report(report)
-        if self._fd is None:
-            raise DeviceError("Vaydeer command transport is closed")
         try:
-            # A hidraw endpoint has one shared response queue. Serialize the full
-            # write/read exchange across GUI and CLI processes, never just the write.
-            with self._command_lock(self._fd, timeout_ms):
-                written = self._writer(self._fd, report)
+            with self.session(timeout_ms):
+                fd = self._require_fd()
+                written = self._writer(fd, report)
                 if written != len(report):
                     raise DeviceError(f"HID command write was partial: {written} of {len(report)} bytes")
-                readable, _, _ = self._selector([self._fd], [], [], timeout_ms / 1000)
+                readable, _, _ = self._selector([fd], [], [], timeout_ms / 1000)
                 if not readable:
                     raise DeviceError("Vaydeer command interface timed out waiting for a response")
-                return self._reader(self._fd, 64)
+                return self._reader(fd, 64)
         except DeviceError:
             raise
         except OSError as error:
             if error.errno in {errno.ENODEV, errno.EIO, errno.ENOENT}:
                 raise DeviceError("Vaydeer command interface disappeared; reconnect the keypad and retry") from error
             raise DeviceError(f"HID command transport failed: {error}") from error
+
+    @contextmanager
+    def session(self, timeout_ms: int) -> Iterator[None]:
+        """Serialize a complete protocol operation on one command endpoint.
+
+        HID responses can already be queued on a second client that opened the
+        same hidraw node before the first client acquired its advisory lock.
+        Draining before the first request makes the next response unambiguous;
+        keeping the lock across the operation prevents new Studio requests from
+        interleaving with multi-frame reads or writes.
+        """
+
+        with self._local_lock:
+            if self._session_depth:
+                self._session_depth += 1
+                try:
+                    yield
+                finally:
+                    self._session_depth -= 1
+                return
+
+            fd = self._require_fd()
+            with self._command_lock(fd, timeout_ms):
+                self._drain_stale_responses(fd)
+                self._session_depth = 1
+                try:
+                    yield
+                finally:
+                    self._session_depth = 0
+
+    def _require_fd(self) -> int:
+        if self._fd is None:
+            raise DeviceError("Vaydeer command transport is closed")
+        return self._fd
+
+    def _drain_stale_responses(self, fd: int) -> None:
+        """Discard bounded old response frames left by an earlier client session."""
+
+        for _ in range(MAX_STALE_RESPONSE_FRAMES):
+            readable, _, _ = self._selector([fd], [], [], 0)
+            if not readable:
+                return
+            if not self._reader(fd, 64):
+                return
+        readable, _, _ = self._selector([fd], [], [], 0)
+        if readable:
+            raise DeviceError("Vaydeer command response queue has too many stale frames; retry the operation")
 
     def close(self) -> None:
         if self._fd is not None:

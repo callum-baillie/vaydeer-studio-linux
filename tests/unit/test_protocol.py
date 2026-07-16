@@ -1,9 +1,32 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
 from vaydeer_studio.core.models import AssignmentKind, KeyAssignment, SupportLevel
 from vaydeer_studio.devices.mock import MockJP1011Transport
 from vaydeer_studio.protocol.client import VaydeerProtocol
 from vaydeer_studio.protocol.codec import DecodedKeyHeader, decode_assignment, encode_assignment_frames
+
+
+class SessionRecordingTransport:
+    def __init__(self) -> None:
+        self.inner = MockJP1011Transport()
+        self.events: list[str] = []
+
+    def transact(self, report: bytes, timeout_ms: int) -> bytes:
+        return self.inner.transact(report, timeout_ms)
+
+    def close(self) -> None:
+        self.inner.close()
+
+    @contextmanager
+    def session(self, _timeout_ms: int) -> Iterator[None]:
+        self.events.append("enter")
+        try:
+            yield
+        finally:
+            self.events.append("exit")
 
 
 def test_reads_jp1011_device_layers_names_and_assignments() -> None:
@@ -52,3 +75,12 @@ def test_write_then_read_back_key_configuration() -> None:
     assignment = KeyAssignment(key_index=4, label="F13", kind=AssignmentKind.KEYBOARD, key_codes=[124])
     protocol.write_key_assignment(0, assignment)
     assert protocol.read_key_assignment(0, 4).model_dump() == assignment.model_dump()
+
+
+def test_snapshot_uses_one_transport_session_for_all_frames() -> None:
+    transport = SessionRecordingTransport()
+    snapshot = VaydeerProtocol(transport).read_snapshot()
+
+    assert snapshot.device.key_count == 9
+    assert len(snapshot.layer(0).assignments) == 9
+    assert transport.events == ["enter", "exit"]

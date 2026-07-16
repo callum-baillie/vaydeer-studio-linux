@@ -29,6 +29,11 @@ protocol boundary.
 7. Write stable assignments/layer names, commit the layer, and read back.
 8. Compare the expected snapshot to the actual snapshot and retain the backup.
 
+The full write and verification sequence uses one exclusive command session.
+This prevents an independent Studio CLI or desktop inspection from interleaving
+with a multi-frame operation; stale interface-0 response frames are discarded
+before the session's first known request.
+
 The graphical application performs no real write; this makes the terminal
 review an intentional, auditable boundary. A dry run never writes.
 

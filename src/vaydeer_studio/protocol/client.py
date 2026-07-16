@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any, Protocol
 
 from vaydeer_studio.core.errors import ProtocolError
 from vaydeer_studio.core.models import DeviceInfo, DeviceSnapshot, KeyAssignment, Layer, LayerInfo
@@ -33,9 +36,40 @@ class VaydeerProtocol:
     def __init__(self, transport: CommandTransport, *, timeout_ms: int = 2_000) -> None:
         self._transport = transport
         self.timeout_ms = timeout_ms
+        self._session_lock = threading.RLock()
+        self._session_depth = 0
 
     def close(self) -> None:
         self._transport.close()
+
+    @contextmanager
+    def session(self) -> Iterator[None]:
+        """Keep a compound protocol operation together when the transport supports it."""
+
+        with self._session_lock:
+            if self._session_depth:
+                self._session_depth += 1
+                try:
+                    yield
+                finally:
+                    self._session_depth -= 1
+                return
+
+            session_factory: Any = getattr(self._transport, "session", None)
+            if not callable(session_factory):
+                self._session_depth = 1
+                try:
+                    yield
+                finally:
+                    self._session_depth = 0
+                return
+
+            with session_factory(self.timeout_ms):
+                self._session_depth = 1
+                try:
+                    yield
+                finally:
+                    self._session_depth = 0
 
     def request(self, command: Command, payload: bytes = b"") -> bytes:
         report = build_request(command, payload)
@@ -78,30 +112,34 @@ class VaydeerProtocol:
         self.request(Command.CHANGE_ACTIVE_LAYER, bytes([layer_index]))
 
     def read_key_assignment(self, layer_index: int, key_index: int) -> KeyAssignment:
-        header_data = self.request(Command.READ_KEY, bytes([0xFF, layer_index, key_index]))
-        header = decode_key_header(header_data)
-        chunks = bytearray()
-        for sequence in range(16):
-            chunk = self.request(Command.READ_KEY, bytes([sequence, layer_index, key_index]))
-            if not chunk:
-                raise ProtocolError("Read-key data response was empty")
-            if chunk[0] == END_MARKER:
-                return decode_assignment(key_index, header, bytes(chunks))
-            chunks.extend(chunk[1:])
-        raise ProtocolError("Read-key did not terminate within the documented sequence range")
+        with self.session():
+            header_data = self.request(Command.READ_KEY, bytes([0xFF, layer_index, key_index]))
+            header = decode_key_header(header_data)
+            chunks = bytearray()
+            for sequence in range(16):
+                chunk = self.request(Command.READ_KEY, bytes([sequence, layer_index, key_index]))
+                if not chunk:
+                    raise ProtocolError("Read-key data response was empty")
+                if chunk[0] == END_MARKER:
+                    return decode_assignment(key_index, header, bytes(chunks))
+                chunks.extend(chunk[1:])
+            raise ProtocolError("Read-key did not terminate within the documented sequence range")
 
     def write_key_assignment(self, layer_index: int, assignment: KeyAssignment) -> None:
-        for frame in encode_assignment_frames(layer_index, assignment):
-            response = self._transport.transact(frame, self.timeout_ms)
-            data = parse_response(response, expected_command=Command.WRITE_KEY)
-            if not data or data[0] != 0:
-                raise ProtocolError("Write-key command was rejected by the device")
+        with self.session():
+            for frame in encode_assignment_frames(layer_index, assignment):
+                response = self._transport.transact(frame, self.timeout_ms)
+                data = parse_response(response, expected_command=Command.WRITE_KEY)
+                if not data or data[0] != 0:
+                    raise ProtocolError("Write-key command was rejected by the device")
 
     def write_layer_name(self, layer_index: int, maximum_layer_index: int, name: str) -> None:
-        self._write_frame(encode_layer_name_frame(layer_index, maximum_layer_index, name), Command.WRITE_LAYER_NAME)
+        with self.session():
+            self._write_frame(encode_layer_name_frame(layer_index, maximum_layer_index, name), Command.WRITE_LAYER_NAME)
 
     def commit_layer(self, layer_index: int, maximum_layer_index: int) -> None:
-        self._write_frame(encode_commit_frame(layer_index, maximum_layer_index), Command.COMMIT_LAYER)
+        with self.session():
+            self._write_frame(encode_commit_frame(layer_index, maximum_layer_index), Command.COMMIT_LAYER)
 
     def _write_frame(self, frame: bytes, command: Command) -> None:
         response = self._transport.transact(frame, self.timeout_ms)
@@ -110,13 +148,14 @@ class VaydeerProtocol:
             raise ProtocolError(f"Command 0x{int(command):02X} was rejected by the device")
 
     def read_snapshot(self) -> DeviceSnapshot:
-        info = self.read_device_info()
-        layer_info = self.read_layer_info()
-        layers: list[Layer] = []
-        for layer_index in range(layer_info.layer_count):
-            assignments = [self.read_key_assignment(layer_index, key) for key in range(info.key_count)]
-            layers.append(Layer(index=layer_index, name=self.read_layer_name(layer_index), assignments=assignments))
-        return DeviceSnapshot(device=info, layers=layers)
+        with self.session():
+            info = self.read_device_info()
+            layer_info = self.read_layer_info()
+            layers: list[Layer] = []
+            for layer_index in range(layer_info.layer_count):
+                assignments = [self.read_key_assignment(layer_index, key) for key in range(info.key_count)]
+                layers.append(Layer(index=layer_index, name=self.read_layer_name(layer_index), assignments=assignments))
+            return DeviceSnapshot(device=info, layers=layers)
 
     def preview_write_packets(self, snapshot: DeviceSnapshot) -> list[bytes]:
         packets: list[bytes] = []

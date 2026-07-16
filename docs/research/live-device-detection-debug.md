@@ -81,9 +81,10 @@ the intended custom rule did not visibly apply during rule testing.
    `O_RDWR | O_CLOEXEC`; keep interface 2 separate and read-only.
 4. Validate every outgoing report through the protocol allowlist, including the
    hard prohibition on `0xFC`.
-5. Serialize each command write/read response pair with a bounded advisory lock
-   on the selected command node. This prevents a GUI and CLI diagnostic from
-   consuming each other's response.
+5. Serialize entire command sessions with a bounded advisory lock on the
+   selected command node. Before the first request, discard any response frames
+   already queued by a prior client. This prevents a GUI and CLI diagnostic
+   from consuming each other's response during multi-frame reads.
 6. Install a user service that opens only the dynamically selected interface-2
    node with `O_RDONLY | O_CLOEXEC` and keeps it open without a write or polling
    requirement.
@@ -105,10 +106,33 @@ systemctl --user status vaydeer-studio.service
 
 The diagnostic reported a ready state, normal-user command and keepalive
 access, an active read-only keepalive, and the validated JP-1011 capability.
-The inspection returned one layer and nine existing numeric-key mappings. Four
-concurrent `doctor` probes also completed successfully after command locking.
-The Qt Devices view rendered the live firmware, bootloader, layers, permission,
-and keepalive state in offscreen smoke validation.
+The inspection returned one layer and nine existing numeric-key mappings. The
+Qt Devices view rendered the live firmware, bootloader, layers, permission, and
+keepalive state in offscreen smoke validation.
+
+### Concurrent client correction
+
+Initial one-request concurrent `doctor` probes passed with an exchange-level
+lock. A later concurrent, read-only `inspect` and Qt snapshot exposed a more
+subtle HID behavior: clients which had already opened interface 0 could retain
+a response broadcast by another client. That left an old response at the head
+of the next client's queue, which correctly failed checksum/command validation
+instead of being mistaken for valid device state.
+
+The transport now takes the advisory lock for the full protocol session. A
+snapshot holds one lock for device information, layer information, names, and
+every multi-frame key read; an approved configuration transaction holds one
+lock through writes and read-back verification. The newly locked session drains
+up to 256 already-readable frames before it sends its first known request. It
+aborts without a write if the queue remains nonempty after that limit. It never
+sends arbitrary or firmware commands. Unit and integration coverage
+exercises the stale-frame and compound-session cases.
+
+The corrected path was validated on the connected JP-1011 with two simultaneous
+`vaydeer-studio-cli inspect` processes and an offscreen live Qt Devices view.
+All three completed successfully and reported firmware `1.0.2`, bootloader
+`0.2.1`, one layer, and nine numeric-key assignments. This used only the
+reviewed initialization and read commands; no configuration write occurred.
 
 ## Reconnect validation status
 

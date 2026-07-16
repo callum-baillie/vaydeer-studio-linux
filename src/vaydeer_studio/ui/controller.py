@@ -550,9 +550,7 @@ class StudioController(QObject):
 
     @Slot()
     def reloadService(self) -> None:
-        result = subprocess.run(
-            ["systemctl", "--user", "daemon-reload"], check=False, capture_output=True, text=True
-        )
+        result = subprocess.run(["systemctl", "--user", "daemon-reload"], check=False, capture_output=True, text=True)
         if result.returncode == 0:
             result = subprocess.run(
                 ["systemctl", "--user", "restart", "vaydeer-studio.service"],

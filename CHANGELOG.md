@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.3 - 2026-07-16
+
+- Serialize complete JP-1011 command sessions, not only individual HID
+  exchanges, and discard stale response frames before a newly locked session.
+- Prevent concurrent CLI and desktop inspections from cross-consuming queued
+  interface-0 responses during multi-frame snapshot reads or verified applies.
+- Add regression coverage for stale-frame draining and compound-session locks.
+
 ## 0.1.2 - 2026-07-16
 
 - Automatically surface USB disappearance in the desktop UI and retry the

@@ -65,18 +65,19 @@ def apply_prepared(protocol: VaydeerProtocol, preview: ApplyPreview, *, confirme
     maximum_layer_index = max(0, preview.current.device.max_layers - 1)
     current_layer: int | None = None
     try:
-        for layer in preview.proposed.layers:
-            current_layer = layer.index
-            protocol.write_layer_name(layer.index, maximum_layer_index, layer.name)
-            for key_index in range(preview.current.device.key_count):
-                protocol.write_key_assignment(layer.index, layer.assignment_for(key_index))
-            protocol.commit_layer(layer.index, maximum_layer_index)
+        with protocol.session():
+            for layer in preview.proposed.layers:
+                current_layer = layer.index
+                protocol.write_layer_name(layer.index, maximum_layer_index, layer.name)
+                for key_index in range(preview.current.device.key_count):
+                    protocol.write_key_assignment(layer.index, layer.assignment_for(key_index))
+                protocol.commit_layer(layer.index, maximum_layer_index)
+            verified = protocol.read_snapshot()
     except Exception as error:
         location = "before any layer was committed" if current_layer is None else f"while writing layer {current_layer}"
         raise PartialWriteError(
             f"Configuration write stopped {location}. Backup remains at {preview.backup_path}: {error}"
         ) from error
-    verified = protocol.read_snapshot()
     differences = snapshot_diff(preview.proposed, verified)
     if differences:
         detail = "; ".join(change.describe() for change in differences[:4])
