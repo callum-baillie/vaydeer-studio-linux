@@ -62,18 +62,25 @@ Item {
                 spacing: Math.max(5, width * 0.032)
 
                 Repeater {
+                    id: keyRepeater
+                    // A repeater owns its delegates. Keep the root reference
+                    // here so an event handler never has to resolve the outer
+                    // keypad ID from the delegate's isolated scope.
+                    property var keypadControl: keypad
                     model: keypad.keys
                     delegate: Button {
                         id: physicalKey
                         required property var modelData
-                        readonly property bool isPressed: keypad.pressedKeys.indexOf(modelData.index) !== -1
-                        readonly property bool isSelected: keypad.selectedKey === modelData.index
+                        objectName: "physicalKey-" + modelData.index
+                        readonly property var keypadRoot: keyRepeater.keypadControl
+                        readonly property bool isPressed: keypadRoot !== null && keypadRoot.pressedKeys.indexOf(modelData.index) !== -1
+                        readonly property bool isSelected: keypadRoot !== null && keypadRoot.selectedKey === modelData.index
                         readonly property bool hasPendingChange: modelData.pending === true
                         readonly property real pressDepth: Math.max(2, height * 0.07)
                         width: (keyGrid.width - keyGrid.spacing * (keyGrid.columns - 1)) / keyGrid.columns
                         height: (keyGrid.height - keyGrid.spacing * (keyGrid.rows - 1)) / keyGrid.rows
-                        enabled: keypad.interactive
-                        hoverEnabled: keypad.interactive
+                        enabled: keypadRoot !== null && keypadRoot.interactive
+                        hoverEnabled: keypadRoot !== null && keypadRoot.interactive
                         focusPolicy: Qt.StrongFocus
                         Accessible.name: "Physical key " + (modelData.index + 1) + ", " + modelData.label
                         Accessible.description: modelData.physicalLabel + (physicalKey.hasPendingChange ? ", pending device sync" : ", matches device state")
@@ -81,9 +88,11 @@ Item {
                         ToolTip.text: modelData.physicalLabel + "\nDraft: " + modelData.label + (physicalKey.hasPendingChange ? "\nDevice: " + modelData.deviceLabel + "\nPending sync" : "\nCurrent on device")
 
                         onClicked: {
-                            keypad.keySelected(modelData.index)
-                            if (keypad.simulateOnClick)
-                                keypad.keyActivated(modelData.index)
+                            if (keypadRoot === null)
+                                return
+                            keypadRoot.keySelected(modelData.index)
+                            if (keypadRoot.simulateOnClick)
+                                keypadRoot.keyActivated(modelData.index)
                         }
 
                         background: Item {
@@ -93,7 +102,7 @@ Item {
                                 width: parent.width
                                 height: parent.height - physicalKey.pressDepth
                                 radius: Math.max(4, parent.width * 0.11)
-                                color: Qt.darker(keypad.panelColor, 1.4)
+                                color: Qt.darker(physicalKey.keypadRoot.panelColor, 1.4)
                             }
                             Rectangle {
                                 id: keyCap
@@ -102,9 +111,9 @@ Item {
                                 width: parent.width
                                 height: parent.height - physicalKey.pressDepth
                                 radius: Math.max(4, parent.width * 0.11)
-                                color: physicalKey.isPressed ? Qt.darker(keypad.panelColor, 1.18) : keypad.panelColor
+                                color: physicalKey.isPressed ? Qt.darker(physicalKey.keypadRoot.panelColor, 1.18) : physicalKey.keypadRoot.panelColor
                                 border.width: 1
-                                border.color: physicalKey.isSelected ? keypad.accent : (physicalKey.hasPendingChange ? keypad.pendingColor : Qt.lighter(keypad.panelColor, 1.55))
+                                border.color: physicalKey.isSelected ? physicalKey.keypadRoot.accent : (physicalKey.hasPendingChange ? physicalKey.keypadRoot.pendingColor : Qt.lighter(physicalKey.keypadRoot.panelColor, 1.55))
                                 Behavior on y { NumberAnimation { duration: 65; easing.type: Easing.OutCubic } }
                                 Rectangle {
                                     anchors.fill: parent
@@ -113,10 +122,10 @@ Item {
                                     visible: !physicalKey.isPressed
                                     color: "transparent"
                                     border.width: physicalKey.isSelected ? 1 : 0
-                                    border.color: Qt.lighter(keypad.panelColor, 1.28)
+                                    border.color: Qt.lighter(physicalKey.keypadRoot.panelColor, 1.28)
                                 }
                                 Rectangle {
-                                    visible: keypad.showSyncState
+                                    visible: physicalKey.keypadRoot.showSyncState
                                     width: Math.max(7, parent.width * 0.11)
                                     height: width
                                     radius: width / 2
@@ -124,7 +133,7 @@ Item {
                                     anchors.right: parent.right
                                     anchors.topMargin: Math.max(4, parent.width * 0.07)
                                     anchors.rightMargin: Math.max(4, parent.width * 0.07)
-                                    color: physicalKey.hasPendingChange ? keypad.pendingColor : keypad.accent
+                                    color: physicalKey.hasPendingChange ? physicalKey.keypadRoot.pendingColor : physicalKey.keypadRoot.accent
                                     border.color: Qt.lighter(color, 1.2)
                                 }
                             }
@@ -141,7 +150,7 @@ Item {
                                 Label {
                                     width: parent.width
                                     text: "K" + (physicalKey.modelData.index + 1)
-                                    color: keypad.muted
+                                    color: physicalKey.keypadRoot.muted
                                     font.pixelSize: Math.max(8, physicalKey.width * 0.14)
                                     horizontalAlignment: Text.AlignHCenter
                                     elide: Text.ElideRight
@@ -149,7 +158,7 @@ Item {
                                 Label {
                                     width: parent.width
                                     text: physicalKey.modelData.label
-                                    color: keypad.ink
+                                    color: physicalKey.keypadRoot.ink
                                     font.pixelSize: Math.max(9, physicalKey.width * 0.17)
                                     font.bold: true
                                     horizontalAlignment: Text.AlignHCenter

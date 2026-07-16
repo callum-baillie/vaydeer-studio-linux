@@ -337,6 +337,7 @@ ApplicationWindow {
                                     anchors.margins: 16
                                     spacing: 20
                                     DeviceKeypad {
+                                        objectName: "deviceOverviewKeypad"
                                         Layout.preferredWidth: 188
                                         Layout.preferredHeight: 186
                                         keys: vaydeerBridge.keys
@@ -555,6 +556,7 @@ ApplicationWindow {
                                             }
                                         }
                                         DeviceKeypad {
+                                            objectName: "mappingKeypad"
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
                                             Layout.margins: 8
@@ -569,7 +571,7 @@ ApplicationWindow {
                                             muted: window.muted
                                             bodyColor: window.darkMode ? "#63717C" : "#9AA7AF"
                                             panelColor: window.darkMode ? "#111920" : "#E3EAED"
-                                            onKeySelected: vaydeerBridge.selectKey(keyIndex)
+                                            onKeySelected: function(keyIndex) { vaydeerBridge.selectKey(keyIndex) }
                                         }
                                     }
                                 }
@@ -876,6 +878,7 @@ ApplicationWindow {
                                             }
                                         }
                                         DeviceKeypad {
+                                            objectName: "bindingKeypad"
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
                                             keys: vaydeerBridge.keys
@@ -888,7 +891,7 @@ ApplicationWindow {
                                             muted: window.muted
                                             bodyColor: window.darkMode ? "#63717C" : "#9AA7AF"
                                             panelColor: window.darkMode ? "#111920" : "#E3EAED"
-                                            onKeySelected: vaydeerBridge.selectKey(keyIndex)
+                                            onKeySelected: function(keyIndex) { vaydeerBridge.selectKey(keyIndex) }
                                         }
                                         Label { text: "Key " + (vaydeerBridge.selectedKey.index + 1) + " on " + bindingLayerCombo.currentText; color: window.muted; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true; font.pixelSize: 12 }
                                     }
@@ -1153,6 +1156,7 @@ ApplicationWindow {
                                             model: vaydeerBridge.layers
                                             delegate: Button {
                                                 required property var modelData
+                                                required property int index
                                                 width: ListView.view.width
                                                 height: 42
                                                 text: modelData.displayName
@@ -1238,6 +1242,7 @@ ApplicationWindow {
                                 }
                                 Label { text: vaydeerBridge.mockMode ? "Click a physical key to generate a press and release." : vaydeerBridge.testerStatus; color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 DeviceKeypad {
+                                    objectName: "testerKeypad"
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     Layout.margins: 6
@@ -1252,8 +1257,8 @@ ApplicationWindow {
                                     muted: window.muted
                                     bodyColor: window.darkMode ? "#63717C" : "#9AA7AF"
                                     panelColor: window.darkMode ? "#111920" : "#E3EAED"
-                                    onKeySelected: vaydeerBridge.selectKey(keyIndex)
-                                    onKeyActivated: vaydeerBridge.simulateKey(keyIndex)
+                                    onKeySelected: function(keyIndex) { vaydeerBridge.selectKey(keyIndex) }
+                                    onKeyActivated: function(keyIndex) { vaydeerBridge.simulateKey(keyIndex) }
                                 }
                                 Label { text: "Vendor reports: fb 03 layer key state xor"; color: window.muted; font.pixelSize: 11; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
                             }

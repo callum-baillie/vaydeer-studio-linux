@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.11 - 2026-07-16
+
+- Remove deprecated implicit signal arguments from keypad handlers and declare
+  delegate indexes explicitly, eliminating the QML `keyIndex`/`index` runtime
+  warnings.
+- Bind each physical-key delegate to its owning repeater before handling a
+  click, so all keypad rows select and animate their intended physical key
+  without unresolved `keypad` references.
+- Add deterministic offscreen checks for clicking a lower-row keypad key and
+  keep named keypad surfaces available to UI validation tooling.
+
 ## 0.1.10 - 2026-07-16
 
 - Give the reviewed-device-change dialog explicit themed header and diff-list
