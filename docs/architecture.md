@@ -7,7 +7,7 @@ cannot bypass a device safeguard.
 | Layer | Responsibility |
 | --- | --- |
 | `protocol/` | Fixed report framing, XOR validation, known commands, typed key codecs, and a hard firmware-command block. |
-| `devices/` | Sysfs/hidapi discovery, HID transport, capability table, declarative layouts, and mock JP-1011. |
+| `devices/` | Sysfs report-descriptor discovery, bounded/serialized Linux hidraw transport, capability table, declarative layouts, diagnostics, and mock JP-1011. |
 | `core/` | Profile schema, portable JSON/YAML, backup store, diff, and transactional apply preparation. |
 | `service/` | Interface-2 read-only keepalive, binding executor, hotplug tick loop, and Unix-socket IPC. |
 | `ui/` | QML views and a Qt controller; real hardware is inspection-only from the desktop shell. |
@@ -22,3 +22,10 @@ write remains reported with the preserved pre-write backup.
 The user service has no raw packet API and never sends command `0xFC`. Its
 socket protocol is a small JSON request/response channel for state, bindings,
 mock events, and clean shutdown.
+
+On Linux, sysfs is authoritative for the vendor HID usage and USB interface
+number. This avoids relying on hidapi builds that report opaque paths or blank
+usage metadata. The command transport opens only the selected interface-0
+node, validates every report against the protocol allowlist, and holds an
+advisory lock for the complete write/read exchange so the GUI and CLI cannot
+consume each other's responses.

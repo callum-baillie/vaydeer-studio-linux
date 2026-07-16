@@ -1,7 +1,8 @@
 # Sources
 
-All web sources below were retrieved 2026-07-15. Local research reports are
-summarized in sanitized form and were not treated as redistributable binaries.
+Web sources below were retrieved 2026-07-15. The final local validation was
+performed 2026-07-16. Local research reports are summarized in sanitized form
+and were not treated as redistributable binaries.
 
 | Source | Revision / date | Purpose |
 | --- | --- | --- |
@@ -12,5 +13,6 @@ summarized in sanitized form and were not treated as redistributable binaries.
 | https://primis.org/blog/post/2024-06-17/Vaydeer-9-Key-Linux-Fix | Article dated 2024-06-17 | Public explanation of the Linux HID-open fix. |
 | https://downloads.vaydeer.com/keyboard/firmware.json | Retrieved 2026-07-15 | Public firmware metadata, including key-9 `1.1.2`. |
 | https://www.vaydeer.com/pages/downloads | Retrieved 2026-07-15 | Official downloads page. |
+| [Live JP-1011 Detection Repair](live-device-detection-debug.md) | 2026-07-16 | Sanitized local live-device diagnostics and repair validation. |
 
 License and reuse decisions are in [../../ATTRIBUTION.md](../../ATTRIBUTION.md).

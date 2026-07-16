@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 from pathlib import Path
-import argparse
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
@@ -25,12 +25,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--page", type=int, default=0, choices=range(7))
     parser.add_argument("--output", type=Path, default=Path("screenshots/mock-jp1011.png"))
+    parser.add_argument("--live", action="store_true", help="Render the connected keypad without writing to it")
     args = parser.parse_args()
     target = args.output
     target.parent.mkdir(parents=True, exist_ok=True)
     application = QGuiApplication([])
     engine = QQmlApplicationEngine()
-    controller = StudioController(mock=True)
+    controller = StudioController(mock=not args.live)
     _refs.append(controller)
     engine.rootContext().setContextProperty("vaydeerBridge", controller)
     engine.load(QUrl.fromLocalFile(str(files("vaydeer_studio.resources.qml").joinpath("Main.qml"))))
@@ -47,7 +48,7 @@ def main() -> int:
             return
         application.quit()
 
-    QTimer.singleShot(500, capture)
+    QTimer.singleShot(900, capture)
     return application.exec()
 
 

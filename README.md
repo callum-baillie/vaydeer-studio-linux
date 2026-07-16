@@ -65,8 +65,9 @@ uv run vaydeer-studio --mock jp1011
 ```
 
 The current checkout was validated with `uv sync`, `pytest`, Ruff, mypy, the
-source/wheel build, and an offscreen Qt smoke launch. For a physical keypad,
-follow [docs/installation.md](docs/installation.md).
+source/wheel build, offscreen Qt smoke launches, and a normal-user read-only
+inspection of an attached JP-1011. For a physical keypad, follow
+[docs/installation.md](docs/installation.md).
 
 ## Recommended installation
 
@@ -75,14 +76,15 @@ Install [uv](https://docs.astral.sh/uv/), clone this repository, then run:
 ```bash
 uv sync --extra dev
 ./scripts/install.sh
-# Reconnect the keypad after udev reloads its rule.
-systemctl --user enable --now vaydeer-studio.service
-vaydeer-studio
+# Reconnect the keypad after udev reloads its rule, then verify the complete path.
+vaydeer-studio-cli doctor
+~/.local/bin/vaydeer-studio
 ```
 
 `install.sh` installs only user integration plus the narrowly scoped udev rule
 for VID:PID `0483:5752` interfaces 0 and 2. It requires `sudo` only for that
-one udev file. Do not run the desktop application as root.
+one udev file and starts the user service. Do not run the desktop application
+as root.
 
 ### Ubuntu and Debian
 
@@ -154,20 +156,22 @@ If normal key events disappear, check the service:
 
 ```bash
 systemctl --user status vaydeer-studio.service
-vaydeer-studio-cli diagnostics
-vaydeer-studio-cli keepalive
+vaydeer-studio-cli doctor
+vaydeer-studio-cli diagnostics --verbose
 ```
 
 Reconnect the keypad after installing the udev rule. See
 [docs/troubleshooting.md](docs/troubleshooting.md) for permissions and HID
-diagnostics, and export a sanitized diagnostic bundle from the app.
+diagnostics, [the live detection report](docs/research/live-device-detection-debug.md)
+for the repaired hidapi/sysfs behavior, and export a sanitized diagnostic bundle
+from the app.
 
 ## Uninstall
 
 ```bash
 ./scripts/uninstall.sh
-# Remove the udev rule as well:
-./scripts/uninstall.sh --udev
+# Keep the scoped udev rule for another local HID client:
+./scripts/uninstall.sh --keep-udev
 ```
 
 Backups and profiles are retained deliberately.

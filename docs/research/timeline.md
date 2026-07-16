@@ -8,6 +8,7 @@
 | Protocol review | Correlated simple read/write/layer commands across public implementations and captures. |
 | Firmware review | Documented wrapper/CRC observations without retaining or using firmware binaries. |
 | Product implementation | Added dynamic keepalive, strict packet gate, mock transport, backups/diffs, and conservative capability checks. |
+| Live-device repair | Replaced an unusable hidapi command open with sysfs-selected native hidraw, corrected udev matching, and validated normal-user service access. |
 
 The exact workstation timestamps, device serial values, and unneeded host logs
 were removed from the public summaries.

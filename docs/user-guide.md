@@ -3,6 +3,11 @@
 Open **Devices** to inspect the detected keypad. The JP-1011 diagram follows
 vendor indexes `0` through `8`: top-left to bottom-right.
 
+When no keypad is present, **Devices** shows a disconnected state instead of
+mock data. Select **Retry detection** after connecting it. **Setup** points to
+the source installer, while **Export diagnostics** writes a sanitized report;
+the desktop application never invokes `sudo` itself.
+
 ## On-device mappings
 
 Choose a layer, select a key, choose a stable action category, enter a label
@@ -30,5 +35,7 @@ program plus arguments by default. Shell execution is not the default path.
 
 The live tester displays only while explicitly open and clears events when it
 closes. Diagnostics include matched interfaces, permission state, keepalive
-state, device information, and recent UI status. Exported diagnostic bundles are
-intended to be shareable after a final personal-data review.
+state, device information, and recent UI status. The diagnostics page has a
+refresh control and copyable summary. Exported bundles omit USB serial numbers,
+home paths, raw vendor binaries, and full report descriptors by default;
+perform a final personal-data review before sharing.

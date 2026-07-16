@@ -15,6 +15,11 @@ conservative. One/four/six layouts are selectable generic layouts unless a
 reliable physical arrangement has been captured. No guessed visual arrangement
 influences protocol key indexing.
 
+On Linux, live detection requires sysfs HID metadata plus the report descriptor
+to identify the four interface roles. hidapi enumeration remains a dependency
+for compatibility experiments but is not trusted as the sole source of usage
+metadata. See [live-device-detection-debug.md](research/live-device-detection-debug.md).
+
 ## Experimental categories
 
 Mouse, macro, text, host trigger, Vaydeer action, layer action, and special

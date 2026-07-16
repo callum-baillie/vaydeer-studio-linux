@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from vaydeer_studio.ui import controller as controller_module
 from vaydeer_studio.ui.controller import StudioController
 
 
@@ -26,3 +27,12 @@ def test_controller_edits_profile_and_generates_diff() -> None:
     assert controller.dirty
     controller.previewApply()
     assert any("Num 7 -> A" in line for line in controller.previewLines)
+
+
+def test_controller_exposes_a_real_disconnected_state(monkeypatch) -> None:
+    monkeypatch.setattr(controller_module, "discover_linux_hidraw", lambda: [])
+    controller = StudioController(mock=False)
+
+    assert controller.connection["state"] == "no_device"
+    assert controller.device["model"] == "No Vaydeer device detected"
+    assert controller.keys == []

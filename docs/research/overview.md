@@ -15,3 +15,9 @@ nor firmware binaries are stored in this repository.
 The compact sanitized source summaries are in
 [../../research/sanitized-reports](../../research/sanitized-reports). They omit
 host paths, user names, serial values, and irrelevant system logs.
+
+The live-device repair that turned the investigation into an installed,
+normal-user application path is documented in
+[live-device-detection-debug.md](live-device-detection-debug.md). It covers
+the incomplete hidapi metadata observed during validation, the sysfs fallback,
+the corrected udev match, and the read-only test boundary.

@@ -212,21 +212,27 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 currentIndex: window.navIndex
+                onCurrentIndexChanged: {
+                    if (currentIndex === 5)
+                        vaydeerBridge.refreshDiagnostics()
+                }
 
                 // Devices
                 Item {
                     ScrollView {
+                        id: devicesScroll
                         anchors.fill: parent
                         contentWidth: availableWidth
+                        contentHeight: devicesContent.implicitHeight + 48
                         ColumnLayout {
-                            width: parent.width
+                            id: devicesContent
+                            x: 24
+                            y: 24
+                            width: Math.max(0, devicesScroll.availableWidth - 48)
                             spacing: 18
-                            anchors.margins: 24
-                            anchors.left: parent.left
-                            anchors.right: parent.right
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 102
+                                Layout.preferredHeight: 148
                                 color: window.panel
                                 radius: 6
                                 border.color: window.darkMode ? "#33414C" : "#D8E0E6"
@@ -234,19 +240,23 @@ ApplicationWindow {
                                     anchors.fill: parent
                                     anchors.margins: 18
                                     spacing: 22
-                                    Rectangle { Layout.preferredWidth: 12; Layout.preferredHeight: 12; radius: 6; color: vaydeerBridge.device.usb === "Connected" ? window.accent : window.danger }
+                                    Rectangle { Layout.preferredWidth: 12; Layout.preferredHeight: 12; radius: 6; color: vaydeerBridge.connection.connected ? window.accent : window.danger }
                                     ColumnLayout {
                                         Layout.fillWidth: true
                                         spacing: 3
-                                        Label { text: vaydeerBridge.device.model; color: window.ink; font.bold: true; font.pixelSize: 18 }
-                                        Label { text: vaydeerBridge.device.usb + " • " + vaydeerBridge.device.keepalive; color: window.muted; font.pixelSize: 13 }
+                                        Label { text: vaydeerBridge.connection.title; color: window.ink; font.bold: true; font.pixelSize: 18; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                        Label { text: vaydeerBridge.connection.message; color: window.muted; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                        Label { visible: vaydeerBridge.connection.recovery.length > 0; text: vaydeerBridge.connection.recovery; color: window.amber; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                     }
-                                    Button { text: "Reconnect"; onClicked: vaydeerBridge.reconnectDevice(); Accessible.name: "Reconnect and inspect device" }
+                                    Button { text: "Retry detection"; onClicked: vaydeerBridge.reconnectDevice(); Accessible.name: "Retry Vaydeer device detection" }
+                                    Button { text: "Setup"; onClicked: vaydeerBridge.showSetupCommand(); Accessible.name: "Show hardware setup command" }
                                     Button { text: "Export diagnostics"; onClicked: vaydeerBridge.exportDiagnostics(); Accessible.name: "Export sanitized diagnostics" }
                                 }
                             }
                             GridLayout {
+                                id: deviceFacts
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: columns === 3 ? 188 : 288
                                 columns: width > 940 ? 3 : 2
                                 rowSpacing: 12
                                 columnSpacing: 12
@@ -258,6 +268,9 @@ ApplicationWindow {
                                     delegate: Rectangle {
                                         required property var modelData
                                         Layout.fillWidth: true
+                                        Layout.preferredWidth: (
+                                            deviceFacts.width - (deviceFacts.columns - 1) * deviceFacts.columnSpacing
+                                        ) / deviceFacts.columns
                                         Layout.preferredHeight: 88
                                         color: window.panel
                                         radius: 6
@@ -284,6 +297,39 @@ ApplicationWindow {
                                     text: vaydeerBridge.device.warning
                                     wrapMode: Text.WordWrap
                                     color: window.darkMode ? "#FFE4A3" : "#73510A"
+                                }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 130
+                                color: window.panel
+                                radius: 6
+                                border.color: window.darkMode ? "#33414C" : "#D8E0E6"
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 8
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "Hardware setup"; color: window.ink; font.bold: true; Layout.fillWidth: true }
+                                        Button { text: "Reload service"; onClicked: vaydeerBridge.reloadService(); Accessible.name: "Reload Vaydeer keepalive service" }
+                                        Button { text: "Copy summary"; onClicked: vaydeerBridge.copyDiagnosticSummary(); Accessible.name: "Copy sanitized diagnostic summary" }
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 16
+                                        Repeater {
+                                            model: vaydeerBridge.setupChecks
+                                            delegate: RowLayout {
+                                                required property var modelData
+                                                spacing: 6
+                                                Rectangle { Layout.preferredWidth: 8; Layout.preferredHeight: 8; radius: 4; color: modelData.status === "pass" ? window.accent : modelData.status === "warn" ? window.amber : window.danger }
+                                                Label { text: modelData.label; color: window.muted; font.pixelSize: 12 }
+                                            }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                    }
+                                    Label { text: "Run ./scripts/install.sh to install or repair udev and the user service. The application never invokes sudo itself."; color: window.muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 }
                             }
                         }
@@ -351,12 +397,12 @@ ApplicationWindow {
                                             text: "K" + (modelData.index + 1) + "\n" + modelData.label
                                             Accessible.name: modelData.physicalLabel + ", " + modelData.label
                                             onClicked: vaydeerBridge.selectKey(modelData.index)
-                                            contentItem: Column {
+                                            contentItem: ColumnLayout {
                                                 anchors.fill: parent
                                                 anchors.margins: 10
                                                 spacing: 6
                                                 Label { text: "K" + (modelData.index + 1); color: window.muted; font.pixelSize: 11; font.bold: true }
-                                                Label { text: modelData.label; color: window.ink; width: parent.width; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; font.pixelSize: 14; font.bold: true }
+                                                Label { text: modelData.label; color: window.ink; Layout.fillWidth: true; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight; font.pixelSize: 14; font.bold: true }
                                                 Label { text: modelData.support === "on_device" ? "On device" : "Experimental"; color: modelData.support === "on_device" ? window.accent : window.amber; font.pixelSize: 10 }
                                             }
                                             background: Rectangle {
@@ -616,6 +662,8 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label { text: "Diagnostics are sanitized: no serial numbers, home paths, or vendor binaries are exported."; color: window.muted; Layout.fillWidth: true }
+                            Button { text: "Refresh"; onClicked: vaydeerBridge.refreshDiagnostics(); Accessible.name: "Refresh diagnostics" }
+                            Button { text: "Copy summary"; onClicked: vaydeerBridge.copyDiagnosticSummary(); Accessible.name: "Copy sanitized diagnostics summary" }
                             Button { text: "Export diagnostics"; onClicked: vaydeerBridge.exportDiagnostics(); Accessible.name: "Export diagnostics bundle" }
                         }
                         GridLayout {
@@ -647,7 +695,7 @@ ApplicationWindow {
                             color: window.panel
                             radius: 6
                             border.color: window.darkMode ? "#33414C" : "#D8E0E6"
-                            Label { anchors.fill: parent; anchors.margins: 16; text: "The service selects interface 2 using VID:PID, USB interface number, vendor usage page, usage, and the HID report descriptor. It opens O_RDONLY | O_CLOEXEC, does not write, and only reads when Linux-side event binding is enabled."; color: window.muted; wrapMode: Text.WordWrap; verticalAlignment: Text.AlignTop }
+                            Label { anchors.fill: parent; anchors.margins: 16; text: vaydeerBridge.diagnosticSummary; color: window.muted; wrapMode: Text.WordWrap; verticalAlignment: Text.AlignTop }
                         }
                     }
                 }
