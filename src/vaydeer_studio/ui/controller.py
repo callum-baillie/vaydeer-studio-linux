@@ -1784,10 +1784,55 @@ class StudioController(QObject):
                 "key": key_index + 1 if key_index is not None else 0,
                 "event": "Press" if pressed is True else "Release" if pressed is False else "Unknown",
                 "layer": layer_index + 1 if layer_index is not None else 0,
+                "source": "Keypad",
                 "raw": raw,
             },
         )
         self._tester_events = self._tester_events[:30]
+
+    @Slot()
+    def clearTesterEvents(self) -> None:
+        """Clear the UI-only event history without changing service state."""
+
+        self._tester_events = []
+        self._status = "Live tester events cleared"
+        self.testerChanged.emit()
+        self.statusChanged.emit()
+
+    @Slot(int)
+    def copyTesterEvent(self, index: int) -> None:
+        """Copy a readable event summary instead of exposing raw reports by default."""
+
+        if not 0 <= index < len(self._tester_events):
+            self._status = "Select a live tester event to copy"
+            self.statusChanged.emit()
+            return
+        event = self._tester_events[index]
+        key = f"K{event['key']}" if event["key"] else "Unknown key"
+        layer = f"Layer {event['layer']}" if event["layer"] else "Unknown layer"
+        QGuiApplication.clipboard().setText(
+            f"{event['timestamp']}  {key}  {event['event']}  {layer}  {event['source']}"
+        )
+        self._status = "Live tester event copied"
+        self.statusChanged.emit()
+
+    @Slot()
+    def exportTesterSession(self) -> None:
+        """Export the bounded, UI-visible tester session to the XDG data directory."""
+
+        root = user_data_path("Vaydeer Studio", "Vaydeer Studio") / "tester-sessions"
+        root.mkdir(parents=True, exist_ok=True)
+        path = root / f"tester-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.json"
+        capability = capability_for(self._snapshot.device)
+        payload = {
+            "schema_version": 1,
+            "captured_at": datetime.now(UTC).isoformat(),
+            "device": "Vaydeer JP-1011" if self._snapshot.device.key_count == 9 else capability.model,
+            "events": self._tester_events,
+        }
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        self._status = f"Live tester session exported to {path}"
+        self.statusChanged.emit()
 
     def _release_tester_key(self, key_index: int) -> None:
         """Keep batched physical press/release reports visible for one render frame."""

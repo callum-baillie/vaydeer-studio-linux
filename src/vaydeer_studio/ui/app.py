@@ -26,6 +26,7 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(verbose=args.debug)
 
     QCoreApplication.setOrganizationName("Vaydeer Studio")
+    QCoreApplication.setOrganizationDomain("vaydeer-studio.local")
     QCoreApplication.setApplicationName("Vaydeer Studio")
     application = QGuiApplication([sys.argv[0], *qt_args])
     engine = QQmlApplicationEngine()

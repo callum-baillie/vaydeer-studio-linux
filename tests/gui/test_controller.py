@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from subprocess import CompletedProcess
 
 from PySide6.QtCore import Qt
@@ -85,6 +86,30 @@ def test_help_page_closes_key_event_listener_modes() -> None:
     controller.setActivePage(6)
     assert controller._tester_open is False
     assert controller._mapping_key_selection_active is False
+
+    controller.setActivePage(7)
+    assert controller._tester_open is False
+    assert controller._mapping_key_selection_active is False
+
+
+def test_live_tester_can_clear_and_export_a_sanitized_session(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(controller_module, "user_data_path", lambda *_args: tmp_path)
+    controller = StudioController(mock=True)
+    controller.setTesterOpen(True)
+    controller.simulateKey(4)
+
+    controller.exportTesterSession()
+
+    exports = list((tmp_path / "tester-sessions").glob("tester-*.json"))
+    assert len(exports) == 1
+    payload = json.loads(exports[0].read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
+    assert payload["device"] == "Vaydeer JP-1011"
+    assert payload["events"][0]["source"] == "Keypad"
+
+    controller.clearTesterEvents()
+    assert controller.testerEvents == []
+    assert controller.statusMessage == "Live tester events cleared"
 
 
 def test_controller_edits_profile_and_generates_diff() -> None:
@@ -539,6 +564,7 @@ def test_real_controller_relays_tester_events_from_service(monkeypatch) -> None:
         "key": 5,
         "event": "Press",
         "layer": 1,
+        "source": "Keypad",
         "raw": "fb 03 00 04 00 fc",
     }
     controller.setTesterOpen(False)

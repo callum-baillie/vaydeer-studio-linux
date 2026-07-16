@@ -1,29 +1,81 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtCore
 
 ApplicationWindow {
     id: window
     visible: true
     width: 1440
     height: 900
-    minimumWidth: 1040
+    minimumWidth: 1024
     minimumHeight: 680
     title: "Vaydeer Studio"
-    color: darkMode ? "#10171D" : "#F3F6F7"
+    color: appBackground
 
-    property bool darkMode: true
-    property int navIndex: 0
-    property color ink: darkMode ? "#E8EEF2" : "#18242D"
-    property color muted: darkMode ? "#9BAAB5" : "#657681"
-    property color accent: "#1DB9A2"
-    property color amber: "#D99C35"
-    property color danger: "#D25B5B"
-    property color panel: darkMode ? "#172129" : "#FFFFFF"
-    property color panelRaised: darkMode ? "#202D36" : "#EEF3F5"
-    property color line: darkMode ? "#33414C" : "#D8E0E6"
-    property var primaryPagesModel: ["Devices", "On-device mappings", "Linux bindings", "Profiles", "Live key tester", "Diagnostics"]
-    property int helpPageIndex: 6
+    Settings {
+        id: appPreferences
+        objectName: "appPreferences"
+        category: "ui"
+        property bool darkMode: true
+        property bool advancedMode: false
+        property int page: 0
+    }
+
+    // Small design-token set used by the shell and all new surfaces.
+    property bool darkMode: appPreferences.darkMode
+    property bool advancedMode: appPreferences.advancedMode
+    property int navIndex: appPreferences.page
+    property color appBackground: darkMode ? "#10171D" : "#F4F7F8"
+    property color surface: darkMode ? "#172129" : "#FFFFFF"
+    property color raisedSurface: darkMode ? "#202D36" : "#EAF0F2"
+    property color primaryText: darkMode ? "#E8EEF2" : "#18242D"
+    property color secondaryText: darkMode ? "#A9B8C2" : "#5C6E79"
+    property color disabledText: darkMode ? "#6E7E89" : "#8A9AA4"
+    property color border: darkMode ? "#33414C" : "#D3DEE3"
+    property color accent: "#1AAE99"
+    property color info: "#4D91D0"
+    property color amber: "#C98B2C"
+    property color danger: "#C64F57"
+    property color ink: primaryText
+    property color muted: secondaryText
+    property color panel: surface
+    property color panelRaised: raisedSurface
+    property color line: border
+    property int space4: 4
+    property int space8: 8
+    property int space12: 12
+    property int space16: 16
+    property int controlHeight: 36
+    property int panelRadius: 6
+    property var primaryPagesModel: ["Overview", "On-device keys", "Linux actions", "Profiles", "Live tester", "Diagnostics", "Setup"]
+    property int setupPageIndex: 6
+    property int helpPageIndex: 7
+
+    palette.button: raisedSurface
+    palette.buttonText: primaryText
+    palette.base: surface
+    palette.text: primaryText
+    palette.window: appBackground
+    palette.windowText: primaryText
+    palette.highlight: accent
+    palette.highlightedText: "#FFFFFF"
+
+    Shortcut {
+        sequence: "Ctrl+S"
+        onActivated: vaydeerBridge.saveProfile()
+    }
+    Shortcut {
+        sequence: "Ctrl+R"
+        onActivated: vaydeerBridge.readFromDevice()
+    }
+
+    function navigate(index) {
+        const safeIndex = Math.max(0, Math.min(index, helpPageIndex))
+        appPreferences.page = safeIndex
+        navIndex = safeIndex
+        vaydeerBridge.setActivePage(safeIndex)
+    }
 
     function layerIndexForSelected() {
         for (let index = 0; index < vaydeerBridge.layers.length; index++) {
@@ -72,6 +124,49 @@ ApplicationWindow {
         return "/usr/bin/program"
     }
 
+    function bindingTargetLabel(action) {
+        if (action === "application") return "Application"
+        if (action === "url") return "URL"
+        if (action === "file") return "File"
+        if (action === "directory") return "Folder"
+        if (action === "command") return "Executable"
+        if (action === "notification") return "Message"
+        if (action === "script") return "Script"
+        if (action === "text") return "Text"
+        return "Target"
+    }
+
+    function setupLabel(label) {
+        const labels = {
+            "Mock keypad": "Keypad detected",
+            "Vaydeer device": "Keypad detected",
+            "Command interface": "Keypad command access",
+            "Command interface 0": "Keypad command access",
+            "Keepalive interface": "Linux activation interface",
+            "Keepalive interface 2": "Linux activation interface",
+            "Command access": "Permission to configure the keypad",
+            "Command interface access": "Permission to configure the keypad",
+            "Keepalive access": "Permission for Linux activation",
+            "Keepalive interface access": "Permission for Linux activation",
+            "udev rule": "Device permissions rule",
+            "Vaydeer udev rule": "Device permissions rule",
+            "User service": "Background service",
+            "Protocol read": "Device information read",
+            "Device information": "Device information read"
+        }
+        return labels[label] || label
+    }
+
+    function setupDetail(label, status) {
+        if (status === "pass")
+            return "Ready"
+        if (label === "udev rule")
+            return "Install or refresh the Vaydeer permissions rule, then reconnect the keypad."
+        if (label === "User service")
+            return "Install and start the Background service to enable Linux actions."
+        return "Needs attention. Run diagnostics or follow Setup guidance."
+    }
+
     component HintButton: ToolButton {
         id: hint
         text: "?"
@@ -100,7 +195,7 @@ ApplicationWindow {
         property string hint: ""
         Layout.fillWidth: true
         spacing: 6
-        Label { text: parent.text; color: window.ink; font.pixelSize: 17; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+        Label { text: parent.text; color: window.ink; font.pixelSize: 18; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
         HintButton { visible: parent.hint.length > 0; ToolTip.text: parent.hint }
     }
 
@@ -119,6 +214,109 @@ ApplicationWindow {
             color: parent.statusColor
             font.pixelSize: 11
             font.bold: true
+        }
+    }
+
+    component PageHeader: ColumnLayout {
+        property string title: ""
+        property string subtitle: ""
+        property string status: ""
+        Layout.fillWidth: true
+        spacing: 3
+        RowLayout {
+            Layout.fillWidth: true
+            Label { text: parent.parent.title; color: window.primaryText; font.pixelSize: 24; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+            Label { visible: parent.parent.status.length > 0; text: parent.parent.status; color: window.secondaryText; font.pixelSize: 12; elide: Text.ElideRight }
+        }
+        Label { visible: parent.subtitle.length > 0; text: parent.subtitle; color: window.secondaryText; font.pixelSize: 13; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+    }
+
+    component InfoBanner: Rectangle {
+        property string title: ""
+        property string body: ""
+        property color bannerColor: window.info
+        Layout.fillWidth: true
+        implicitHeight: bannerContent.implicitHeight + 24
+        color: Qt.rgba(bannerColor.r, bannerColor.g, bannerColor.b, window.darkMode ? 0.12 : 0.09)
+        radius: window.panelRadius
+        border.width: 1
+        border.color: Qt.rgba(bannerColor.r, bannerColor.g, bannerColor.b, 0.42)
+        ColumnLayout {
+            id: bannerContent
+            anchors.fill: parent
+            anchors.margins: 12
+            spacing: 3
+            Label { text: parent.parent.title; color: parent.parent.bannerColor; font.bold: true; font.pixelSize: 13 }
+            Label { text: parent.parent.body; color: window.primaryText; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
+        }
+    }
+
+    component HealthStatusRow: RowLayout {
+        property string title: ""
+        property string detail: ""
+        property string state: "ready"
+        Layout.fillWidth: true
+        spacing: 10
+        Rectangle {
+            Layout.preferredWidth: 8
+            Layout.preferredHeight: 8
+            radius: 4
+            color: parent.state === "error" ? window.danger : parent.state === "warning" ? window.amber : parent.state === "info" ? window.info : window.accent
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 1
+            Label { text: parent.parent.title; color: window.primaryText; font.bold: true; font.pixelSize: 13 }
+            Label { text: parent.parent.detail; color: window.secondaryText; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+        }
+    }
+
+    component EmptyState: ColumnLayout {
+        property string title: ""
+        property string body: ""
+        Layout.fillWidth: true
+        Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+        spacing: 6
+        Label { text: parent.title; color: window.primaryText; font.pixelSize: 16; font.bold: true; Layout.alignment: Qt.AlignHCenter }
+        Label { text: parent.body; color: window.secondaryText; font.pixelSize: 13; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; Layout.alignment: Qt.AlignHCenter; Layout.maximumWidth: 420 }
+    }
+
+    component PrimaryButton: Button {
+        property color buttonColor: window.accent
+        implicitHeight: window.controlHeight
+        font.bold: true
+        Accessible.name: text
+        contentItem: Label {
+            text: parent.text
+            color: "#FFFFFF"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.bold: true
+            elide: Text.ElideRight
+        }
+        background: Rectangle {
+            radius: 5
+            color: parent.enabled ? (parent.down ? Qt.darker(parent.buttonColor, 1.12) : parent.buttonColor) : window.disabledText
+            border.color: parent.activeFocus ? "#FFFFFF" : "transparent"
+            border.width: parent.activeFocus ? 1 : 0
+        }
+    }
+
+    component SecondaryButton: Button {
+        implicitHeight: window.controlHeight
+        Accessible.name: text
+        contentItem: Label {
+            text: parent.text
+            color: parent.enabled ? window.primaryText : window.disabledText
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+        background: Rectangle {
+            radius: 5
+            color: parent.down ? Qt.darker(window.raisedSurface, 1.08) : window.raisedSurface
+            border.color: parent.activeFocus ? window.accent : window.border
+            border.width: 1
         }
     }
 
@@ -179,7 +377,7 @@ ApplicationWindow {
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 3
-                    Label { text: "On this host"; color: window.amber; font.bold: true; font.pixelSize: 12 }
+                    Label { text: "On this Linux computer"; color: window.info; font.bold: true; font.pixelSize: 12 }
                     Label {
                         text: scopeExplainer.hostText
                         color: window.ink
@@ -195,7 +393,7 @@ ApplicationWindow {
     Dialog {
         id: diffDialog
         objectName: "diffDialog"
-        title: "Review proposed device changes"
+        title: "Review keypad write"
         modal: true
         width: Math.min(window.width - 72, 760)
         height: Math.min(window.height - 110, 580)
@@ -227,7 +425,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 12
             Label {
-                text: vaydeerBridge.previewLines.length === 0 ? "No on-device mapping changes are staged." : "A timestamped backup is created before every write."
+                text: vaydeerBridge.previewLines.length === 0 ? "No keypad mapping changes are staged." : "These changes will be stored on the physical keypad. A timestamped backup is created first, then Studio reads the keypad back to verify the write."
                 color: window.muted
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
@@ -272,9 +470,9 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                Button { text: "Close"; onClicked: diffDialog.close() }
-                Button {
-                    text: vaydeerBridge.mockMode ? "Apply in mock" : "Continue"
+                SecondaryButton { text: "Close"; onClicked: diffDialog.close() }
+                PrimaryButton {
+                    text: vaydeerBridge.mockMode ? "Write to mock keypad" : "Continue to confirmation"
                     enabled: vaydeerBridge.previewLines.length > 0
                     onClicked: {
                         if (vaydeerBridge.mockMode) {
@@ -293,7 +491,7 @@ ApplicationWindow {
     Dialog {
         id: hardwareWriteDialog
         objectName: "hardwareWriteDialog"
-        title: "Confirm device write"
+        title: "Confirm write to keypad"
         modal: true
         width: Math.min(window.width - 72, 600)
         anchors.centerIn: parent
@@ -329,7 +527,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 12
             Label {
-                text: "This sends the reviewed mappings to the connected keypad, then reads them back for verification."
+                text: "This stores the reviewed mappings in the connected keypad's memory, then reads them back for verification."
                 color: window.ink
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
@@ -366,8 +564,8 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                Button { text: "Cancel"; onClicked: hardwareWriteDialog.close() }
-                Button {
+                SecondaryButton { text: "Cancel"; onClicked: hardwareWriteDialog.close() }
+                PrimaryButton {
                     text: "Write to keypad"
                     enabled: hardwareWritePhrase.text.trim() === "APPLY"
                     Accessible.name: "Confirm and write reviewed mappings to the keypad"
@@ -380,66 +578,107 @@ ApplicationWindow {
         }
     }
 
-    ColumnLayout {
+    Component.onCompleted: {
+        if (navIndex < 0 || navIndex > helpPageIndex)
+            navigate(0)
+        else
+            vaydeerBridge.setActivePage(navIndex)
+    }
+
+    Item {
         anchors.fill: parent
-        spacing: 0
 
         Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 60
+            id: appBar
+            objectName: "appBar"
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 64
+            z: 100
             color: window.panel
             border.color: window.line
             border.width: 1
-            RowLayout {
+            Item {
                 anchors.fill: parent
-                anchors.leftMargin: 20
-                anchors.rightMargin: 20
-                spacing: 12
-                Label { text: "Vaydeer Studio"; color: window.ink; font.pixelSize: 20; font.bold: true }
-                Label { text: "Linux keypad configuration"; color: window.muted; font.pixelSize: 12 }
-                Item { Layout.fillWidth: true }
-                StatusPill {
-                    label: vaydeerBridge.connection.connected ? "Connected" : "Offline"
-                    statusColor: vaydeerBridge.connection.connected ? window.accent : window.danger
+                anchors.leftMargin: 24
+                anchors.rightMargin: 24
+                Label {
+                    id: appTitle
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Vaydeer Studio"
+                    color: window.primaryText
+                    font.pixelSize: 20
+                    font.bold: true
                 }
-                Button {
-                    text: window.darkMode ? "Light" : "Dark"
-                    onClicked: window.darkMode = !window.darkMode
-                    Accessible.name: "Switch application color theme"
+                Label {
+                    anchors.left: appTitle.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Keypad configuration"
+                    color: window.secondaryText
+                    font.pixelSize: 13
+                }
+                RowLayout {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: parent.height
+                    spacing: 12
+                    StatusPill {
+                        label: vaydeerBridge.connection.connected ? "Keypad ready" : "Keypad offline"
+                        statusColor: vaydeerBridge.connection.connected ? window.accent : window.danger
+                    }
+                    StatusPill {
+                        label: vaydeerBridge.service.running && vaydeerBridge.service.reachable ? "Service ready" : "Service needs attention"
+                        statusColor: vaydeerBridge.service.running && vaydeerBridge.service.reachable ? window.info : window.amber
+                    }
+                    SecondaryButton {
+                        text: window.advancedMode ? "Advanced" : "Basic"
+                        onClicked: appPreferences.advancedMode = !appPreferences.advancedMode
+                        Accessible.name: window.advancedMode ? "Switch to Basic mode" : "Switch to Advanced mode"
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Basic hides low-level device details. Advanced shows them."
+                    }
+                    SecondaryButton {
+                        text: window.darkMode ? "Light" : "Dark"
+                        onClicked: appPreferences.darkMode = !window.darkMode
+                        Accessible.name: "Switch application color theme"
+                    }
                 }
             }
         }
 
         RowLayout {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            anchors.top: appBar.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
             spacing: 0
 
             Rectangle {
                 Layout.preferredWidth: 218
                 Layout.fillHeight: true
+                Layout.alignment: Qt.AlignTop
                 color: window.darkMode ? "#131C23" : "#EAF0F2"
                 border.color: window.line
                 border.width: 1
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: 12
-                    spacing: 5
+                    spacing: 6
                     Repeater {
                         model: window.primaryPagesModel
                         delegate: Button {
                             required property string modelData
                             required property int index
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 40
+                            Layout.preferredHeight: window.controlHeight
                             text: modelData
                             checkable: true
                             checked: window.navIndex === index
                             Accessible.name: modelData
-                            onClicked: {
-                                window.navIndex = index
-                                vaydeerBridge.setActivePage(index)
-                            }
+                            onClicked: window.navigate(index)
                             contentItem: Label {
                                 text: parent.text
                                 color: parent.checked ? window.ink : window.muted
@@ -458,15 +697,12 @@ ApplicationWindow {
                     Item { Layout.fillHeight: true }
                     Button {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 40
+                        Layout.preferredHeight: window.controlHeight
                         text: "Help"
                         checkable: true
                         checked: window.navIndex === window.helpPageIndex
                         Accessible.name: "Help"
-                        onClicked: {
-                            window.navIndex = window.helpPageIndex
-                            vaydeerBridge.setActivePage(window.helpPageIndex)
-                        }
+                        onClicked: window.navigate(window.helpPageIndex)
                         contentItem: Label {
                             text: parent.text
                             color: parent.checked ? window.ink : window.muted
@@ -481,59 +717,110 @@ ApplicationWindow {
                             border.width: parent.checked ? 1 : 0
                         }
                     }
-                    Rectangle {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 72
-                        color: window.panel
-                        radius: 5
-                        border.color: window.line
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            spacing: 2
-                            Label { text: "Active profile"; color: window.muted; font.pixelSize: 11 }
-                            Label { text: vaydeerBridge.profileName; color: window.ink; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
-                            Label { text: vaydeerBridge.dirty ? "Unsaved mapping edits" : "Saved or read from device"; color: vaydeerBridge.dirty ? window.amber : window.muted; font.pixelSize: 10; Layout.fillWidth: true; elide: Text.ElideRight }
-                        }
+                        spacing: 2
+                        Label { text: "Active profile"; color: window.secondaryText; font.pixelSize: 11 }
+                        Label { text: vaydeerBridge.profileName; color: window.primaryText; font.bold: true; elide: Text.ElideRight; Layout.fillWidth: true }
+                        Label { text: vaydeerBridge.dirty ? "Keypad draft has changes" : "Matches current keypad state"; color: vaydeerBridge.dirty ? window.amber : window.secondaryText; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
                     }
                 }
             }
 
             StackLayout {
                 id: pages
+                objectName: "mainPages"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                Layout.minimumHeight: 0
+                Layout.alignment: Qt.AlignTop
                 currentIndex: window.navIndex
                 onCurrentIndexChanged: {
                     if (currentIndex === 5)
                         vaydeerBridge.refreshDiagnostics()
                 }
 
-                // Devices
+                // Overview
                 Item {
                     ScrollView {
                         anchors.fill: parent
                         contentWidth: availableWidth
                         clip: true
                         ColumnLayout {
-                            width: Math.max(0, parent.width - 48)
-                            x: 24
+                            width: Math.max(0, parent.width - 56)
+                            x: 28
                             y: 24
-                            spacing: 16
+                            spacing: window.space16
+                            PageHeader {
+                                title: "Overview"
+                                subtitle: "Choose whether you want to change keypad memory or Linux-only actions."
+                                status: "Profile: " + vaydeerBridge.profileName
+                            }
+                            InfoBanner {
+                                visible: !vaydeerBridge.connection.connected
+                                title: vaydeerBridge.connection.title
+                                body: vaydeerBridge.connection.message + " " + vaydeerBridge.connection.recovery
+                                bannerColor: window.danger
+                            }
+                            InfoBanner {
+                                visible: vaydeerBridge.connection.connected && (!vaydeerBridge.service.running || !vaydeerBridge.service.reachable)
+                                title: "Background service needs attention"
+                                body: "The keypad can still keep its stored mappings, but Linux actions and reliable Linux keyboard activation need the Background service running."
+                                bannerColor: window.amber
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 172
+                                spacing: window.space12
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    color: window.surface
+                                    radius: window.panelRadius
+                                    border.color: Qt.rgba(window.accent.r, window.accent.g, window.accent.b, 0.55)
+                                    border.width: 1
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: window.space16
+                                        spacing: window.space8
+                                        Label { text: "Configure keypad memory"; color: window.accent; font.pixelSize: 17; font.bold: true }
+                                        Label { text: "Stored on the keypad. Works on any compatible computer after writing. The Background service is not required."; color: window.primaryText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                        Item { Layout.fillHeight: true }
+                                        PrimaryButton { text: "Open on-device keys"; onClicked: window.navigate(1); Layout.preferredWidth: 190 }
+                                    }
+                                }
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    color: window.surface
+                                    radius: window.panelRadius
+                                    border.color: Qt.rgba(window.info.r, window.info.g, window.info.b, 0.55)
+                                    border.width: 1
+                                    ColumnLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: window.space16
+                                        spacing: window.space8
+                                        Label { text: "Configure Linux actions"; color: window.info; font.pixelSize: 17; font.bold: true }
+                                        Label { text: "Stored on this Linux computer. The Background service runs these actions and keeps the keypad active on Linux."; color: window.primaryText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                        Item { Layout.fillHeight: true }
+                                        PrimaryButton { text: "Open Linux actions"; buttonColor: window.info; onClicked: window.navigate(2); Layout.preferredWidth: 184 }
+                                    }
+                                }
+                            }
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 224
-                                color: window.panel
-                                radius: 6
-                                border.color: window.line
+                                Layout.preferredHeight: 216
+                                color: window.surface
+                                radius: window.panelRadius
+                                border.color: window.border
                                 RowLayout {
                                     anchors.fill: parent
-                                    anchors.margins: 16
+                                    anchors.margins: window.space16
                                     spacing: 20
                                     DeviceKeypad {
                                         objectName: "deviceOverviewKeypad"
-                                        Layout.preferredWidth: 188
-                                        Layout.preferredHeight: 186
+                                        Layout.preferredWidth: 176
+                                        Layout.preferredHeight: 176
                                         keys: vaydeerBridge.keys
                                         selectedKey: vaydeerBridge.selectedKey.index
                                         columns: vaydeerBridge.layoutColumns
@@ -546,100 +833,43 @@ ApplicationWindow {
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        spacing: 7
+                                        spacing: 10
+                                        HealthStatusRow {
+                                            title: vaydeerBridge.connection.connected ? "Keypad connected" : "Keypad not detected"
+                                            detail: vaydeerBridge.connection.connected ? vaydeerBridge.device.model + " with " + vaydeerBridge.device.keyCount + " keys." : vaydeerBridge.connection.message
+                                            state: vaydeerBridge.connection.connected ? "ready" : "error"
+                                        }
+                                        HealthStatusRow {
+                                            title: "Background service"
+                                            detail: vaydeerBridge.service.detail
+                                            state: vaydeerBridge.service.running && vaydeerBridge.service.reachable ? "info" : "warning"
+                                        }
+                                        HealthStatusRow {
+                                            title: "Active profile"
+                                            detail: vaydeerBridge.profileName + (vaydeerBridge.dirty ? " has keypad changes waiting to be written." : " matches the current keypad state.")
+                                            state: vaydeerBridge.dirty ? "warning" : "ready"
+                                        }
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            Rectangle { Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5; color: vaydeerBridge.connection.connected ? window.accent : window.danger }
-                                            Label { text: vaydeerBridge.connection.title; color: window.ink; font.bold: true; font.pixelSize: 20; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                                        }
-                                        Label { text: vaydeerBridge.connection.message; color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                                        Label { visible: vaydeerBridge.connection.recovery.length > 0; text: vaydeerBridge.connection.recovery; color: window.amber; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
-                                        Item { Layout.fillHeight: true }
-                                        RowLayout {
-                                            Button { text: "Reconnect"; onClicked: vaydeerBridge.reconnectDevice(); Accessible.name: "Reconnect to Vaydeer device" }
-                                            Button { text: "Setup"; onClicked: vaydeerBridge.showSetupCommand(); Accessible.name: "Show Linux setup command" }
-                                            Button { text: "Export diagnostics"; onClicked: vaydeerBridge.exportDiagnostics(); Accessible.name: "Export sanitized diagnostics" }
-                                        }
-                                    }
-                                }
-                            }
-                            GridLayout {
-                                id: deviceFacts
-                                Layout.fillWidth: true
-                                columns: width > 920 ? 3 : 2
-                                rowSpacing: 12
-                                columnSpacing: 12
-                                Repeater {
-                                    model: [
-                                        ["Firmware", vaydeerBridge.device.firmware], ["Bootloader", vaydeerBridge.device.bootloader], ["Physical keys", vaydeerBridge.device.keyCount],
-                                        ["Selected layer", vaydeerBridge.device.activeLayer + 1], ["Profile layers", vaydeerBridge.device.layerCount + " / 6"], ["Permissions", vaydeerBridge.device.permissions]
-                                    ]
-                                    delegate: Rectangle {
-                                        required property var modelData
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 84
-                                        color: window.panel
-                                        radius: 6
-                                        border.color: window.line
-                                        ColumnLayout {
-                                            anchors.fill: parent
-                                            anchors.margins: 13
-                                            Label { text: modelData[0]; color: window.muted; font.pixelSize: 12 }
-                                            Label { text: modelData[1]; color: window.ink; font.pixelSize: 18; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
-                                        }
-                                    }
-                                }
-                            }
-                            Rectangle {
-                                visible: vaydeerBridge.device.warning.length > 0
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: warningText.implicitHeight + 26
-                                color: window.darkMode ? "#3C3220" : "#FFF4D6"
-                                radius: 5
-                                Label { id: warningText; anchors.fill: parent; anchors.margins: 13; text: vaydeerBridge.device.warning; color: window.darkMode ? "#FFE4A3" : "#73510A"; wrapMode: Text.WordWrap }
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 224
-                                color: window.panel
-                                radius: 6
-                                border.color: window.line
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: 14
-                                    spacing: 8
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        SectionTitle { text: "Local Vaydeer service"; hint: "This status is for vaydeer-studiod on the host running this application. The service keeps the vendor event interface open read-only so normal keyboard traffic remains active." }
-                                        Button { text: "Refresh"; onClicked: vaydeerBridge.refreshServiceStatus(); Accessible.name: "Refresh local Vaydeer service status" }
-                                        Button { text: "Reload service"; onClicked: vaydeerBridge.reloadService() }
-                                        Button { visible: !vaydeerBridge.service.installed; text: "Install user service"; onClicked: vaydeerBridge.installUserService(); Accessible.name: "Install and enable local Vaydeer user service" }
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Label { text: "Host"; color: window.muted; font.pixelSize: 12; Layout.preferredWidth: 48 }
-                                        Label { text: vaydeerBridge.service.host; color: window.ink; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
-                                        StatusPill { label: vaydeerBridge.service.installed ? "Installed" : "Not installed"; statusColor: vaydeerBridge.service.installed ? window.accent : window.amber }
-                                        StatusPill { label: vaydeerBridge.service.running ? "Running" : "Stopped"; statusColor: vaydeerBridge.service.running ? window.accent : window.danger }
-                                        StatusPill { label: vaydeerBridge.service.startup ? "Starts at login" : "Not enabled"; statusColor: vaydeerBridge.service.startup ? window.accent : window.amber }
-                                    }
-                                    Label { text: vaydeerBridge.service.detail; color: vaydeerBridge.service.running ? window.muted : window.amber; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
-                                    GridLayout {
-                                        Layout.fillWidth: true
-                                        columns: width > 800 ? 4 : 2
-                                        rowSpacing: 8
-                                        columnSpacing: 12
-                                        Repeater {
-                                            model: vaydeerBridge.setupChecks
-                                            delegate: RowLayout {
-                                                required property var modelData
-                                                Layout.fillWidth: true
-                                                Rectangle { Layout.preferredWidth: 8; Layout.preferredHeight: 8; radius: 4; color: modelData.status === "pass" ? window.accent : modelData.status === "warn" ? window.amber : window.danger }
-                                                Label { text: modelData.label; color: window.muted; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
+                                            Item { Layout.fillWidth: true }
+                                            SecondaryButton { text: "Setup"; onClicked: window.navigate(window.setupPageIndex) }
+                                            SecondaryButton { text: "Run diagnostics"; onClicked: window.navigate(5) }
+                                            PrimaryButton {
+                                                visible: !vaydeerBridge.connection.connected
+                                                text: "Reconnect keypad"
+                                                onClicked: vaydeerBridge.reconnectDevice()
                                             }
                                         }
                                     }
                                 }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 18
+                                Label { text: "Firmware " + vaydeerBridge.device.firmware; color: window.secondaryText; font.pixelSize: 12 }
+                                Label { text: "Bootloader " + vaydeerBridge.device.bootloader; color: window.secondaryText; font.pixelSize: 12 }
+                                Label { text: vaydeerBridge.device.layerCount + " layer" + (vaydeerBridge.device.layerCount === 1 ? "" : "s") + " in profile"; color: window.secondaryText; font.pixelSize: 12 }
+                                Label { text: "Host: " + vaydeerBridge.service.host; color: window.secondaryText; font.pixelSize: 12; elide: Text.ElideRight; Layout.fillWidth: true }
                             }
                         }
                     }
@@ -656,26 +886,21 @@ ApplicationWindow {
                             x: 24
                             y: 20
                             spacing: 14
-                            RowLayout {
-                                Layout.fillWidth: true
-                                SectionTitle { text: "On-device mappings"; hint: "Only documented keyboard, modifier, combination, media, system, and disabled actions can be written to a JP-1011." }
-                                Label { text: "Profile: " + vaydeerBridge.profileName; color: window.muted; font.pixelSize: 12 }
-                                StatusPill { label: vaydeerBridge.profileTargetPlatformLabel; statusColor: window.muted }
-                                StatusPill {
-                                    label: vaydeerBridge.dirty ? vaydeerBridge.pendingMappingCount + " pending" : "Matches device"
-                                    statusColor: vaydeerBridge.dirty ? window.amber : window.accent
-                                }
+                            PageHeader {
+                                title: "On-device keys"
+                                subtitle: "Read the keypad, edit a draft, review changes, then write the draft to keypad memory."
+                                status: vaydeerBridge.dirty ? vaydeerBridge.pendingMappingCount + " changes waiting to be written" : "Matches keypad"
                             }
                             ScopeExplainer {
-                                deviceText: "Supported keys, layers, and layer names are saved to the keypad after you review the diff and confirm the write. They work on any computer without Vaydeer Studio."
-                                hostText: "vaydeer-studiod is not needed for these stored mappings. App launches, files, URLs, text, and commands belong in Linux bindings and run only on this host."
-                                note: "Pending changes stay in the draft until you apply them."
+                                deviceText: "Supported keys, layers, and layer names are stored in keypad memory after a reviewed, confirmed write. They work on any compatible computer."
+                                hostText: "Vaydeer Studio holds edits as a local draft until you write them. The Background service is not needed once these mappings are stored."
+                                note: "Profile: " + vaydeerBridge.profileName
                             }
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 104
+                                Layout.preferredHeight: 96
                                 color: window.panel
-                                radius: 6
+                                radius: window.panelRadius
                                 border.color: window.line
                                 ColumnLayout {
                                     anchors.fill: parent
@@ -702,30 +927,42 @@ ApplicationWindow {
                                             onEditingFinished: vaydeerBridge.renameLayer(text)
                                             Accessible.name: "Current layer name"
                                         }
-                                        HintButton { ToolTip.text: "Layer names are stored with the profile and can be included in a verified device write." }
+                                        HintButton { ToolTip.text: "Layer names are included when you write the reviewed draft to the keypad." }
                                         Item { Layout.fillWidth: true }
-                                        Button { text: "Add layer"; onClicked: vaydeerBridge.addLayer(); Accessible.name: "Add profile layer" }
-                                        Button { text: "Duplicate"; onClicked: vaydeerBridge.duplicateLayer(); Accessible.name: "Duplicate current layer" }
-                                        Button { text: "Remove"; enabled: vaydeerBridge.layers.length > 1; onClicked: vaydeerBridge.deleteLayer(); Accessible.name: "Remove current layer" }
+                                        SecondaryButton { text: "Add layer"; onClicked: vaydeerBridge.addLayer(); Accessible.name: "Add profile layer" }
+                                        SecondaryButton { text: "Duplicate"; onClicked: vaydeerBridge.duplicateLayer(); Accessible.name: "Duplicate current layer" }
+                                        SecondaryButton { text: "Remove"; enabled: vaydeerBridge.layers.length > 1; onClicked: vaydeerBridge.deleteLayer(); Accessible.name: "Remove current layer" }
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
                                         spacing: 9
                                         Label {
                                             Layout.fillWidth: true
-                                            text: vaydeerBridge.mappingKeySelectionStatus + "  |  " + vaydeerBridge.deviceBaseline + (vaydeerBridge.dirty ? "  |  Refresh keeps the draft until you discard or apply it." : "  |  The workspace shows the device state.")
+                                            text: vaydeerBridge.mappingKeySelectionStatus + " " + (vaydeerBridge.dirty ? "Draft changes are safe until you write them." : vaydeerBridge.deviceBaseline)
                                             color: vaydeerBridge.dirty ? window.amber : window.muted
                                             font.pixelSize: 11
                                             elide: Text.ElideRight
                                         }
-                                        Button {
-                                            text: vaydeerBridge.dirty ? "Refresh baseline" : "Read device"
-                                            onClicked: vaydeerBridge.readFromDevice()
-                                            Accessible.name: "Read current device mappings without replacing pending changes"
-                                        }
-                                        Button { text: "Restore latest"; onClicked: { vaydeerBridge.restoreLatestBackup(); diffDialog.open() } }
-                                        Button { text: "Discard"; enabled: vaydeerBridge.dirty; onClicked: vaydeerBridge.discardChanges() }
-                                        Button { text: "Review changes"; enabled: vaydeerBridge.dirty; onClicked: { vaydeerBridge.previewApply(); diffDialog.open() } }
+                                        SecondaryButton { text: "Review changes"; enabled: vaydeerBridge.dirty; onClicked: { vaydeerBridge.previewApply(); diffDialog.open() } }
+                                        PrimaryButton { text: "Write to keypad"; enabled: vaydeerBridge.dirty; onClicked: { vaydeerBridge.previewApply(); diffDialog.open() } }
+                                        SecondaryButton { text: "More actions"; onClicked: mappingActionsMenu.open() }
+                                    }
+                                }
+                                Menu {
+                                    id: mappingActionsMenu
+                                    MenuItem {
+                                        text: vaydeerBridge.dirty ? "Refresh keypad baseline" : "Read from keypad"
+                                        onTriggered: vaydeerBridge.readFromDevice()
+                                    }
+                                    MenuItem {
+                                        text: "Restore latest backup"
+                                        onTriggered: { vaydeerBridge.restoreLatestBackup(); diffDialog.open() }
+                                    }
+                                    MenuSeparator { }
+                                    MenuItem {
+                                        text: "Discard keypad draft"
+                                        enabled: vaydeerBridge.dirty
+                                        onTriggered: vaydeerBridge.discardChanges()
                                     }
                                 }
                             }
@@ -785,10 +1022,13 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: 16
                                         spacing: 8
-                                        property var actionModel: ["Keyboard key", "Key combination", "Modifier", "Media", "System control", "Disabled", "Mouse", "Macro", "Text", "Layer action", "Vaydeer action", "Linux host action"]
+                                        property var basicActionModel: ["Keyboard key", "Key combination", "Modifier", "Media", "System control", "Disabled"]
+                                        property var advancedActionModel: ["Mouse", "Macro", "Text", "Layer action", "Vaydeer action", "Linux host action"]
+                                        property var actionModel: window.advancedMode ? basicActionModel.concat(advancedActionModel) : basicActionModel
                                         function loadSelectedKey() {
                                             const current = vaydeerBridge.selectedKey
-                                            categoryBox.currentIndex = Math.max(0, actionModel.indexOf(current.category))
+                                            const categoryIndex = actionModel.indexOf(current.category)
+                                            categoryBox.currentIndex = categoryIndex >= 0 ? categoryIndex : 0
                                             labelField.text = current.label
                                             codeField.text = current.codes
                                             shortcutCtrl.checked = current.codes.indexOf("Ctrl") !== -1
@@ -818,13 +1058,13 @@ ApplicationWindow {
                                         }
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            SectionTitle { text: "Key " + (vaydeerBridge.selectedKey.index + 1); hint: "A key label is only a visual name. Its key value controls the actual on-device keyboard behavior." }
+                                            SectionTitle { text: "Key " + (vaydeerBridge.selectedKey.index + 1); hint: "Edit the draft for this physical key. Nothing is written until you review and confirm a keypad write." }
                                             StatusPill {
                                                 label: vaydeerBridge.selectedKey.syncState
                                                 statusColor: vaydeerBridge.selectedKey.pending ? window.amber : window.accent
                                             }
                                         }
-                                        Label { text: "Action"; color: window.muted; font.pixelSize: 12 }
+                                        Label { text: "Action type"; color: window.muted; font.pixelSize: 12 }
                                         ComboBox {
                                             id: categoryBox
                                             Layout.fillWidth: true
@@ -832,7 +1072,7 @@ ApplicationWindow {
                                             Accessible.name: "Assignment action category"
                                         }
                                         Label { text: "Keypad label"; color: window.muted; font.pixelSize: 12 }
-                                        TextField { id: labelField; Layout.fillWidth: true; placeholderText: "Optional label shown on the keypad"; selectByMouse: true; Accessible.name: "Selected key label" }
+                                        TextField { id: labelField; Layout.fillWidth: true; placeholderText: "Optional label shown in Studio"; selectByMouse: true; Accessible.name: "Selected key label" }
                                         Label { visible: ["Keyboard key", "Modifier", "Key combination", "Media", "System control"].indexOf(categoryBox.currentText) !== -1; text: categoryBox.currentText === "Key combination" ? "Shortcut values" : "Key value"; color: window.muted; font.pixelSize: 12 }
                                         RowLayout {
                                             visible: ["Keyboard key", "Modifier", "Key combination", "Media", "System control"].indexOf(categoryBox.currentText) !== -1
@@ -866,8 +1106,8 @@ ApplicationWindow {
                                                 }
                                                 Accessible.name: "Choose a standard key value"
                                             }
-                                            Button {
-                                                text: vaydeerBridge.keyCaptureActive ? "Cancel capture" : "Capture a key"
+                                            PrimaryButton {
+                                                text: vaydeerBridge.keyCaptureActive ? "Cancel" : "Capture key"
                                                 onClicked: {
                                                     if (vaydeerBridge.keyCaptureActive)
                                                         vaydeerBridge.cancelKeyCapture()
@@ -883,7 +1123,7 @@ ApplicationWindow {
                                             id: keyCaptureArea
                                             visible: ["Keyboard key", "Modifier", "Key combination", "Media", "System control"].indexOf(categoryBox.currentText) !== -1
                                             Layout.fillWidth: true
-                                            Layout.preferredHeight: vaydeerBridge.keyCaptureActive ? 48 : 30
+                                            Layout.preferredHeight: 46
                                             focus: vaydeerBridge.keyCaptureActive
                                             color: vaydeerBridge.keyCaptureActive ? (window.darkMode ? "#203A3B" : "#D9EEEA") : window.panelRaised
                                             radius: 4
@@ -902,7 +1142,7 @@ ApplicationWindow {
                                                 spacing: 2
                                                 Label {
                                                     width: parent.width
-                                                    text: vaydeerBridge.keyCaptureActive ? "Capturing next keyboard key" : "Key capture"
+                                                    text: vaydeerBridge.keyCaptureActive ? "Press a key on your computer" : "Capture from computer keyboard"
                                                     color: vaydeerBridge.keyCaptureActive ? window.ink : window.muted
                                                     font.bold: vaydeerBridge.keyCaptureActive
                                                     font.pixelSize: 11
@@ -930,14 +1170,14 @@ ApplicationWindow {
                                         }
                                         Label {
                                             visible: vaydeerBridge.selectedKey.deviceLabel.length > 0
-                                            text: vaydeerBridge.selectedKey.pending ? "On device: " + vaydeerBridge.selectedKey.deviceLabel + "  |  Draft: " + vaydeerBridge.selectedKey.value : "On device: " + vaydeerBridge.selectedKey.deviceLabel
+                                            text: vaydeerBridge.selectedKey.pending ? "Keypad now: " + vaydeerBridge.selectedKey.deviceLabel + "   Draft: " + vaydeerBridge.selectedKey.value : "Stored on keypad: " + vaydeerBridge.selectedKey.deviceLabel
                                             color: vaydeerBridge.selectedKey.pending ? window.amber : window.muted
                                             font.pixelSize: 11
                                             wrapMode: Text.WordWrap
                                             Layout.fillWidth: true
                                         }
                                         ColumnLayout {
-                                            visible: categoryBox.currentText === "Macro"
+                                            visible: window.advancedMode && categoryBox.currentText === "Macro"
                                             Layout.fillWidth: true
                                             spacing: 6
                                             Label { text: window.actionDataLabel(categoryBox.currentText); color: window.muted; font.pixelSize: 12 }
@@ -993,14 +1233,14 @@ ApplicationWindow {
                                         }
                                         TextField {
                                             id: detailField
-                                            visible: categoryBox.currentText !== "Macro" && ["Keyboard key", "Modifier", "Key combination", "Media", "System control", "Disabled"].indexOf(categoryBox.currentText) === -1
+                                            visible: window.advancedMode && categoryBox.currentText !== "Macro" && ["Keyboard key", "Modifier", "Key combination", "Media", "System control", "Disabled"].indexOf(categoryBox.currentText) === -1
                                             Layout.fillWidth: true
                                             placeholderText: window.actionDataLabel(categoryBox.currentText)
                                             selectByMouse: true
                                             Accessible.name: window.actionDataLabel(categoryBox.currentText)
                                         }
                                         Label {
-                                            visible: categoryBox.currentText !== "Disabled"
+                                            visible: categoryBox.currentText !== "Disabled" && (window.advancedMode || ["Keyboard key", "Modifier", "Key combination", "Media", "System control"].indexOf(categoryBox.currentText) !== -1)
                                             Layout.fillWidth: true
                                             text: vaydeerBridge.selectedKey.notes.length > 0 && categoryBox.currentText === vaydeerBridge.selectedKey.category ? vaydeerBridge.selectedKey.notes : window.actionState(categoryBox.currentText)
                                             color: window.actionState(categoryBox.currentText) === "Stored on device" ? window.muted : window.amber
@@ -1008,11 +1248,19 @@ ApplicationWindow {
                                             font.pixelSize: 11
                                         }
                                         Item { Layout.fillHeight: true }
+                                        Label {
+                                            visible: window.advancedMode
+                                            Layout.fillWidth: true
+                                            text: "Advanced: documented value " + (codeField.text.length > 0 ? codeField.text : "none") + "  |  category " + categoryBox.currentText
+                                            color: window.secondaryText
+                                            font.pixelSize: 11
+                                            wrapMode: Text.WordWrap
+                                        }
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            Button { text: "Open bindings"; visible: categoryBox.currentText === "Linux host action"; onClicked: { window.navIndex = 2; vaydeerBridge.setActivePage(2) } }
+                                            SecondaryButton { text: "Open Linux actions"; visible: window.advancedMode && categoryBox.currentText === "Linux host action"; onClicked: window.navigate(2) }
                                             Item { Layout.fillWidth: true }
-                                            Button { text: "Save to draft"; onClicked: vaydeerBridge.saveKey(categoryBox.currentText, labelField.text, codeField.text, categoryBox.currentText === "Macro" ? macroField.text : detailField.text); Accessible.name: "Save selected key to the on-device mapping draft" }
+                                            PrimaryButton { text: "Save to draft"; onClicked: vaydeerBridge.saveKey(categoryBox.currentText, labelField.text, codeField.text, categoryBox.currentText === "Macro" ? macroField.text : detailField.text); Accessible.name: "Save selected key to the on-device mapping draft" }
                                         }
                                     }
                                 }
@@ -1032,21 +1280,27 @@ ApplicationWindow {
                             x: 24
                             y: 20
                             spacing: 14
-                            RowLayout {
-                                Layout.fillWidth: true
-                                SectionTitle { text: "Linux bindings"; hint: "These actions need the Vaydeer Studio user service. They are intentionally separate from onboard mappings." }
-                                Label { text: "Profile: " + vaydeerBridge.profileName; color: window.muted; font.pixelSize: 12 }
-                                StatusPill { label: vaydeerBridge.profileTargetPlatformLabel; statusColor: vaydeerBridge.profileSupportsLinuxBindings ? window.accent : window.amber }
-                                StatusPill { label: vaydeerBridge.service.running ? "Service running" : "Service stopped"; statusColor: vaydeerBridge.service.running ? window.accent : window.danger }
-                                StatusPill { label: vaydeerBridge.service.startup ? "Starts at login" : "Manual start"; statusColor: vaydeerBridge.service.startup ? window.accent : window.amber }
+                            PageHeader {
+                                title: "Linux actions"
+                                subtitle: "Create actions for this Linux computer without changing keypad memory."
+                                status: vaydeerBridge.service.running && vaydeerBridge.service.reachable ? "Background service ready" : "Background service unavailable"
                             }
-                            Label {
+                            InfoBanner {
+                                title: "Runs on this Linux computer"
+                                body: "Linux actions are saved in the profile, then synchronized to the Background service. They run only while that service is available and are never written to the keypad."
+                                bannerColor: window.info
+                            }
+                            InfoBanner {
                                 visible: !vaydeerBridge.profileSupportsLinuxBindings
-                                Layout.fillWidth: true
-                                text: "This profile targets " + vaydeerBridge.profileTargetPlatformLabel + ". It can contain portable on-device mappings, but Linux-side bindings are not loaded into vaydeer-studiod. Select Linux on the Profiles page to edit or run host actions."
-                                color: window.amber
-                                wrapMode: Text.WordWrap
-                                font.pixelSize: 11
+                                title: "This profile does not target Linux"
+                                body: "The profile targets " + vaydeerBridge.profileTargetPlatformLabel + ". Its portable keypad mappings are still available, but Linux actions are not loaded on this computer. Change the profile target to Linux to edit actions."
+                                bannerColor: window.amber
+                            }
+                            InfoBanner {
+                                visible: vaydeerBridge.profileSupportsLinuxBindings && (!vaydeerBridge.service.running || !vaydeerBridge.service.reachable)
+                                title: "Background service is not ready"
+                                body: "You can edit and save actions, but they will not run until the Background service is started in Setup."
+                                bannerColor: window.amber
                             }
                             RowLayout {
                                 Layout.fillWidth: true
@@ -1064,7 +1318,7 @@ ApplicationWindow {
                                         spacing: 8
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            Label { text: "Binding target"; color: window.ink; font.bold: true; Layout.fillWidth: true }
+                                        Label { text: "Choose key and layer"; color: window.ink; font.bold: true; Layout.fillWidth: true }
                                             ComboBox {
                                                 id: bindingLayerCombo
                                                 Layout.preferredWidth: 142
@@ -1109,7 +1363,12 @@ ApplicationWindow {
                                         enabled: vaydeerBridge.profileSupportsLinuxBindings
                                         function loadEditor() {
                                             const editor = vaydeerBridge.bindingEditor
-                                            bindingAction.currentIndex = Math.max(0, bindingAction.model.indexOf(editor.action))
+                                            for (let index = 0; index < bindingAction.model.length; index++) {
+                                                if (bindingAction.model[index].id === editor.action) {
+                                                    bindingAction.currentIndex = index
+                                                    break
+                                                }
+                                            }
                                             bindingTarget.text = editor.target
                                             bindingArguments.text = editor.arguments
                                             bindingTrigger.currentIndex = Math.max(0, bindingTrigger.model.indexOf(editor.trigger))
@@ -1123,8 +1382,8 @@ ApplicationWindow {
                                         }
                                         RowLayout {
                                             Layout.fillWidth: true
-                                            SectionTitle { text: vaydeerBridge.bindingEditor.editing ? "Edit binding" : "New binding"; hint: "Commands use a program plus parsed argument array. Shell interpretation stays disabled unless explicitly enabled." }
-                                            Button { text: "New"; onClicked: vaydeerBridge.newBinding(); Accessible.name: "Create a new Linux binding for the selected key" }
+                                            SectionTitle { text: vaydeerBridge.bindingEditor.editing ? "Edit Linux action" : "New Linux action"; hint: "Commands use a program plus parsed argument array. Shell interpretation stays disabled unless explicitly enabled." }
+                                            SecondaryButton { text: "New action"; onClicked: vaydeerBridge.newBinding(); Accessible.name: "Create a new Linux action for the selected key" }
                                         }
                                         Label {
                                             Layout.fillWidth: true
@@ -1139,26 +1398,44 @@ ApplicationWindow {
                                             rowSpacing: 8
                                             columnSpacing: 10
                                             Label { text: "Action"; color: window.muted; font.pixelSize: 12 }
-                                            ComboBox { id: bindingAction; Layout.fillWidth: true; model: ["application", "url", "file", "directory", "command", "notification", "script", "text"]; Accessible.name: "Linux binding action" }
-                                            Label { text: "Target"; color: window.muted; font.pixelSize: 12 }
-                                            TextField { id: bindingTarget; Layout.fillWidth: true; placeholderText: window.bindingTargetHint(bindingAction.currentText); selectByMouse: true; Accessible.name: "Linux binding target" }
-                                            Label { text: "Arguments"; color: window.muted; font.pixelSize: 12 }
-                                            TextField { id: bindingArguments; Layout.fillWidth: true; placeholderText: "--option \"quoted value\""; selectByMouse: true; Accessible.name: "Linux binding argument array" }
+                                            ComboBox {
+                                                id: bindingAction
+                                                Layout.fillWidth: true
+                                                model: [
+                                                    { "label": "Launch application", "id": "application" },
+                                                    { "label": "Open URL", "id": "url" },
+                                                    { "label": "Open file", "id": "file" },
+                                                    { "label": "Open folder", "id": "directory" },
+                                                    { "label": "Run command", "id": "command" },
+                                                    { "label": "Show notification", "id": "notification" },
+                                                    { "label": "Run script", "id": "script" },
+                                                    { "label": "Type text", "id": "text" }
+                                                ]
+                                                textRole: "label"
+                                                valueRole: "id"
+                                                Accessible.name: "Linux action type"
+                                            }
+                                            Label { text: window.bindingTargetLabel(bindingAction.currentValue); color: window.muted; font.pixelSize: 12 }
+                                            TextField { id: bindingTarget; Layout.fillWidth: true; placeholderText: window.bindingTargetHint(bindingAction.currentValue); selectByMouse: true; Accessible.name: "Linux action target" }
+                                            Label { visible: ["application", "command", "script"].indexOf(bindingAction.currentValue) !== -1 || window.advancedMode; text: "Arguments"; color: window.muted; font.pixelSize: 12 }
+                                            TextField { visible: ["application", "command", "script"].indexOf(bindingAction.currentValue) !== -1 || window.advancedMode; id: bindingArguments; Layout.fillWidth: true; placeholderText: "--option \"quoted value\""; selectByMouse: true; Accessible.name: "Linux action argument array" }
                                             Label { text: "Trigger"; color: window.muted; font.pixelSize: 12 }
                                             ComboBox { id: bindingTrigger; Layout.fillWidth: true; model: ["press", "release"]; Accessible.name: "Linux binding trigger" }
-                                            Label { text: "Active window"; color: window.muted; font.pixelSize: 12 }
-                                            TextField { id: bindingWindow; Layout.fillWidth: true; placeholderText: "Optional title or app pattern"; selectByMouse: true; Accessible.name: "Active window pattern" }
+                                            Label { visible: window.advancedMode; text: "Active window"; color: window.muted; font.pixelSize: 12 }
+                                            TextField { visible: window.advancedMode; id: bindingWindow; Layout.fillWidth: true; placeholderText: "Optional title or app pattern"; selectByMouse: true; Accessible.name: "Active window pattern" }
                                         }
-                                        CheckBox { id: allowShell; visible: bindingAction.currentText === "command"; text: "Allow shell execution"; Accessible.name: "Allow shell execution for this binding" }
-                                        Label { visible: bindingAction.currentText === "text"; text: "Text injection is retained in the profile and can be tested in mock mode; a desktop text backend is required for real execution."; color: window.amber; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 11 }
+                                        CheckBox { id: allowShell; visible: window.advancedMode && bindingAction.currentValue === "command"; text: "Allow shell execution"; Accessible.name: "Allow shell execution for this action" }
+                                        InfoBanner { visible: window.advancedMode && bindingAction.currentValue === "command" && allowShell.checked; title: "Shell execution enabled"; body: "The Background service will run this command through a shell. Prefer a direct executable with separate arguments when possible."; bannerColor: window.amber }
+                                        Label { visible: bindingAction.currentValue === "text"; text: "Software text is kept in the profile. Its real execution needs a desktop text backend; mock mode can test the action safely."; color: window.amber; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 11 }
                                         Item { Layout.fillHeight: true }
                                         RowLayout {
                                             Layout.fillWidth: true
                                             Item { Layout.fillWidth: true }
-                                            Button {
-                                                text: vaydeerBridge.bindingEditor.editing ? "Save binding" : "Add binding"
-                                                onClicked: vaydeerBridge.saveBinding(bindingAction.currentText, bindingTarget.text, bindingArguments.text, bindingTrigger.currentText, allowShell.checked, bindingWindow.text)
-                                                Accessible.name: "Save Linux-side binding for selected key"
+                                            PrimaryButton {
+                                                text: "Save action"
+                                                buttonColor: window.info
+                                                onClicked: vaydeerBridge.saveBinding(bindingAction.currentValue, bindingTarget.text, bindingArguments.text, bindingTrigger.currentText, allowShell.checked, bindingWindow.text)
+                                                Accessible.name: "Save Linux action for selected key"
                                             }
                                         }
                                     }
@@ -1166,7 +1443,7 @@ ApplicationWindow {
                             }
                             Rectangle {
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: Math.max(130, bindingsList.contentHeight + 58)
+                                Layout.preferredHeight: Math.max(176, bindingsList.contentHeight + 58)
                                 color: window.panel
                                 radius: 6
                                 border.color: window.line
@@ -1176,8 +1453,8 @@ ApplicationWindow {
                                     spacing: 8
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        SectionTitle { text: "Bindings in this profile"; hint: "Bindings are synchronized to the user service when it is reachable." }
-                                        Label { text: vaydeerBridge.service.reachable ? "Synced to local service" : "Saved in profile; service unavailable"; color: vaydeerBridge.service.reachable ? window.muted : window.amber; font.pixelSize: 11 }
+                                        SectionTitle { text: "Linux actions in this profile"; hint: "Saving an action synchronizes it to the Background service when that service is reachable." }
+                                        Label { text: vaydeerBridge.service.reachable ? "Saved and synchronized" : "Saved locally; service unavailable"; color: vaydeerBridge.service.reachable ? window.secondaryText : window.amber; font.pixelSize: 12 }
                                     }
                                     ListView {
                                         id: bindingsList
@@ -1200,15 +1477,20 @@ ApplicationWindow {
                                                 CheckBox { checked: modelData.enabled; onToggled: vaydeerBridge.setBindingEnabled(index, checked); Accessible.name: "Enable binding " + (index + 1) }
                                                 Label { text: "K" + (modelData.key_index + 1); color: window.ink; font.bold: true; Layout.preferredWidth: 28 }
                                                 Label { text: "Layer " + (modelData.layer_index + 1); color: window.muted; Layout.preferredWidth: 58; font.pixelSize: 12 }
-                                                Label { text: modelData.trigger + " " + modelData.action; color: modelData.supported ? window.ink : window.amber; Layout.preferredWidth: 132; elide: Text.ElideRight }
+                                                Label { text: modelData.trigger + " · " + modelData.action; color: modelData.supported ? window.ink : window.amber; Layout.preferredWidth: 132; elide: Text.ElideRight }
                                                 Label { text: modelData.target; color: window.muted; Layout.fillWidth: true; elide: Text.ElideMiddle }
                                                 Label { visible: !modelData.supported; text: "Not executed"; color: window.amber; font.pixelSize: 11 }
-                                                Button { text: "Run"; enabled: vaydeerBridge.mockMode; onClicked: vaydeerBridge.runBinding(index); Accessible.name: "Run mock binding " + (index + 1) }
-                                                Button { text: "Edit"; onClicked: vaydeerBridge.editBinding(index); Accessible.name: "Edit binding " + (index + 1) }
-                                                Button { text: "Remove"; onClicked: vaydeerBridge.removeBinding(index); Accessible.name: "Remove binding " + (index + 1) }
+                                                SecondaryButton { text: "Test"; visible: vaydeerBridge.mockMode; onClicked: vaydeerBridge.runBinding(index); Accessible.name: "Test mock Linux action " + (index + 1) }
+                                                SecondaryButton { text: "Edit"; onClicked: vaydeerBridge.editBinding(index); Accessible.name: "Edit Linux action " + (index + 1) }
+                                                SecondaryButton { text: "Remove"; onClicked: vaydeerBridge.removeBinding(index); Accessible.name: "Remove Linux action " + (index + 1) }
                                             }
                                         }
-                                        footer: Label { visible: vaydeerBridge.bindings.length === 0; text: "No Linux-side bindings in this profile."; color: window.muted; padding: 8 }
+                                        footer: Item {
+                                            visible: vaydeerBridge.bindings.length === 0
+                                            width: bindingsList.width
+                                            height: 118
+                                            EmptyState { anchors.centerIn: parent; title: "No Linux actions yet"; body: "Choose a keypad key, select an action type, then save it for this Linux computer." }
+                                        }
                                     }
                                 }
                             }
@@ -1227,16 +1509,15 @@ ApplicationWindow {
                             x: 24
                             y: 20
                             spacing: 14
-                            RowLayout {
-                                Layout.fillWidth: true
-                                SectionTitle { text: "Profiles"; hint: "Profiles hold portable on-device mapping drafts, layers, and Linux-side bindings." }
-                                StatusPill { label: vaydeerBridge.dirty ? vaydeerBridge.pendingMappingCount + " mapping changes" : "Matches device"; statusColor: vaydeerBridge.dirty ? window.amber : window.accent }
-                                StatusPill { label: vaydeerBridge.profileDirty ? "Local save needed" : "Saved locally"; statusColor: vaydeerBridge.profileDirty ? window.amber : window.accent }
+                            PageHeader {
+                                title: "Profiles"
+                                subtitle: "Profiles are local, portable configuration files. Selecting one never writes it to the keypad automatically."
+                                status: vaydeerBridge.profileDirty ? "Local save needed" : "Saved locally"
                             }
                             ScopeExplainer {
-                                deviceText: "A profile can contain keypad mappings and layers, but saving a profile does not write it to the keypad. Applying its on-device changes remains a separate confirmed action."
-                                hostText: "Profiles can also carry Linux bindings for vaydeer-studiod. Linux profiles load those bindings on this host; macOS and Windows profiles remain portable configuration files."
-                                note: "Profiles are local, portable drafts until you choose where to apply them."
+                                deviceText: "A profile can contain keypad mappings and layers. Saving a profile keeps a draft; writing its mappings to keypad memory remains a separate confirmed action."
+                                hostText: "A Linux-targeted profile can also carry Linux actions for the Background service. macOS and Windows profiles remain portable configuration files."
+                                note: vaydeerBridge.dirty ? vaydeerBridge.pendingMappingCount + " keypad changes waiting to be written" : "Matches keypad baseline"
                             }
                             Rectangle {
                                 Layout.fillWidth: true
@@ -1272,12 +1553,12 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        Button { text: "Save local"; onClicked: vaydeerBridge.saveProfile(); Accessible.name: "Save current profile locally" }
-                                        Button { text: "New"; onClicked: vaydeerBridge.createProfile(); Accessible.name: "Create new profile" }
-                                        Button { text: "Duplicate"; onClicked: vaydeerBridge.duplicateProfile(); Accessible.name: "Duplicate current profile" }
-                                        ComboBox { id: profileExportFormat; Layout.preferredWidth: 78; model: ["JSON", "YAML"]; Accessible.name: "Profile export format" }
-                                        Button { text: "Export"; onClicked: vaydeerBridge.exportProfile(profileExportFormat.currentText.toLowerCase()); Accessible.name: "Export current profile" }
-                                        Button { text: "Delete"; onClicked: vaydeerBridge.deleteProfile(); Accessible.name: "Delete current profile" }
+                                        PrimaryButton { text: "Save profile"; onClicked: vaydeerBridge.saveProfile(); Accessible.name: "Save current profile locally" }
+                                        SecondaryButton { text: "New profile"; onClicked: vaydeerBridge.createProfile(); Accessible.name: "Create new profile" }
+                                        SecondaryButton { text: "Duplicate"; onClicked: vaydeerBridge.duplicateProfile(); Accessible.name: "Duplicate current profile" }
+                                        ComboBox { visible: window.advancedMode; id: profileExportFormat; Layout.preferredWidth: 78; model: ["JSON", "YAML"]; Accessible.name: "Profile export format" }
+                                        SecondaryButton { text: "Export"; onClicked: vaydeerBridge.exportProfile(window.advancedMode ? profileExportFormat.currentText.toLowerCase() : "json"); Accessible.name: "Export current profile" }
+                                        SecondaryButton { text: "Delete"; onClicked: vaydeerBridge.deleteProfile(); Accessible.name: "Delete current profile" }
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
@@ -1298,7 +1579,7 @@ ApplicationWindow {
                                             font.pixelSize: 10
                                             elide: Text.ElideRight
                                         }
-                                        Button {
+                                        PrimaryButton {
                                             text: "Create preset"
                                             enabled: profilePreset.currentIndex >= 0
                                             onClicked: vaydeerBridge.createProfileFromTemplate(profilePreset.currentValue, profileTargetPlatform.currentValue)
@@ -1308,33 +1589,35 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         TextField { id: importProfilePath; Layout.fillWidth: true; placeholderText: "Profile JSON or YAML path"; selectByMouse: true; Accessible.name: "Profile import path" }
-                                        Button { text: "Import"; onClicked: vaydeerBridge.importProfile(importProfilePath.text); Accessible.name: "Import profile" }
-                                        Button { text: vaydeerBridge.dirty ? "Refresh device baseline" : "Read device"; onClicked: vaydeerBridge.readFromDevice(); Accessible.name: "Read device profile without overwriting pending mappings" }
-                                        Button { text: "Use device state"; enabled: vaydeerBridge.dirty; onClicked: vaydeerBridge.discardChanges(); Accessible.name: "Discard pending mappings and use device state" }
+                                        SecondaryButton { text: "Import"; onClicked: vaydeerBridge.importProfile(importProfilePath.text); Accessible.name: "Import profile" }
+                                        SecondaryButton { text: vaydeerBridge.dirty ? "Refresh keypad baseline" : "Read from keypad"; onClicked: vaydeerBridge.readFromDevice(); Accessible.name: "Read device profile without overwriting pending mappings" }
+                                        SecondaryButton { text: "Use keypad state"; enabled: vaydeerBridge.dirty; onClicked: vaydeerBridge.discardChanges(); Accessible.name: "Discard pending mappings and use keypad state" }
                                     }
                                     Label { text: vaydeerBridge.profileOrigin + "  |  Target: " + vaydeerBridge.profileTargetPlatformLabel + "  |  App: " + vaydeerBridge.profileTargetApplication + "  |  " + vaydeerBridge.deviceBaseline + (vaydeerBridge.dirty ? "  |  Device refresh preserves pending changes." : ""); color: vaydeerBridge.dirty ? window.amber : window.muted; font.pixelSize: 11; Layout.fillWidth: true; elide: Text.ElideRight }
                                 }
                             }
-                            GridLayout {
+                            Rectangle {
                                 Layout.fillWidth: true
-                                columns: width > 920 ? 3 : 1
-                                rowSpacing: 12
-                                columnSpacing: 12
-                                Repeater {
-                                    model: [["Device baseline", "JP-1011 / " + vaydeerBridge.keys.length + " keys"], ["Layers", vaydeerBridge.layers.length + " configured"], ["Target", vaydeerBridge.profileTargetPlatformLabel + " / " + vaydeerBridge.profileTargetApplication]]
-                                    delegate: Rectangle {
-                                        required property var modelData
+                                Layout.preferredHeight: 86
+                                color: window.panel
+                                radius: window.panelRadius
+                                border.color: window.line
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: window.space16
+                                    spacing: 18
+                                    ColumnLayout {
                                         Layout.fillWidth: true
-                                        Layout.preferredHeight: 86
-                                        color: window.panel
-                                        radius: 6
-                                        border.color: window.line
-                                        ColumnLayout {
-                                            anchors.fill: parent
-                                            anchors.margins: 13
-                                            Label { text: modelData[0]; color: window.muted; font.pixelSize: 12 }
-                                            Label { text: modelData[1]; color: window.ink; font.bold: true; font.pixelSize: 17 }
-                                        }
+                                        spacing: 3
+                                        Label { text: "On-device content"; color: window.accent; font.bold: true; font.pixelSize: 13 }
+                                        Label { text: vaydeerBridge.keys.length + " keys · " + vaydeerBridge.layers.length + " layers · " + (vaydeerBridge.dirty ? "draft differs from keypad" : "matches keypad"); color: window.primaryText; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    }
+                                    Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 46; color: window.line }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 3
+                                        Label { text: "Linux-only content"; color: window.info; font.bold: true; font.pixelSize: 13 }
+                                        Label { text: vaydeerBridge.bindings.length + " actions · target " + vaydeerBridge.profileTargetPlatformLabel + " · " + (vaydeerBridge.profileSupportsLinuxBindings ? "available on this host" : "not active on this host"); color: window.primaryText; font.pixelSize: 12; Layout.fillWidth: true; elide: Text.ElideRight }
                                     }
                                 }
                             }
@@ -1352,7 +1635,7 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: 14
                                         spacing: 8
-                                        SectionTitle { text: "Profile layers"; hint: "Use On-device mappings to edit assignments and manage layers." }
+                                        SectionTitle { text: "On-device layers"; hint: "Use On-device keys to edit assignments and manage layers." }
                                         ListView {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
@@ -1382,7 +1665,7 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: 14
                                         spacing: 8
-                                        SectionTitle { text: "Saved profiles"; hint: "Saved profiles are local and use the versioned portable profile schema." }
+                                        SectionTitle { text: "Saved profiles"; hint: "Saved profiles are local portable files. Loading one does not write it to the keypad." }
                                         ListView {
                                             Layout.fillWidth: true
                                             Layout.fillHeight: true
@@ -1425,14 +1708,26 @@ ApplicationWindow {
 
                 // Live key tester
                 Item {
+                    id: testerPage
+                    property bool paused: false
+                    property int selectedEventIndex: -1
+                    onVisibleChanged: {
+                        if (visible)
+                            paused = false
+                    }
                     ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 24
                         spacing: 14
+                        PageHeader {
+                            title: "Live tester"
+                            subtitle: "Read-only event testing. This screen never changes keypad settings."
+                            status: testerPage.paused ? "Listening paused" : (vaydeerBridge.mockMode ? "Mock keypad" : "Listening")
+                        }
                         ScopeExplainer {
-                            deviceText: "The keypad sends its normal keyboard reports and a vendor physical-key event. The tester only observes those reports; it does not store or change any mapping."
-                            hostText: "vaydeer-studiod keeps the vendor event interface open for Linux activation. Studio asks it to forward events only while this tester is open; existing Linux bindings need the daemon, not the Studio window."
-                            note: "Close this page when you no longer need event visibility."
+                            deviceText: "The keypad sends physical press and release events. Testing is read-only and does not change stored mappings, layers, or profiles."
+                            hostText: "The Background service provides the read-only event stream on Linux. Existing Linux actions need the service, but not the Studio window."
+                            note: "Press a keypad key to begin testing."
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -1450,10 +1745,10 @@ ApplicationWindow {
                                 spacing: 9
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    SectionTitle { text: "Live key tester"; hint: "The service listens through the same read-only vendor event interface used for Linux activation. It does not record key events while this screen is closed." }
-                                    StatusPill { label: vaydeerBridge.mockMode ? "Mock" : "Listening"; statusColor: window.accent }
+                                    SectionTitle { text: "Keypad"; hint: "The Background service listens through the same read-only vendor event interface used for Linux activation. It does not record events after you leave this screen." }
+                                    StatusPill { label: testerPage.paused ? "Paused" : (vaydeerBridge.mockMode ? "Mock" : "Listening"); statusColor: testerPage.paused ? window.amber : window.accent }
                                 }
-                                Label { text: vaydeerBridge.mockMode ? "Click a physical key to generate a press and release." : vaydeerBridge.testerStatus; color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Label { text: testerPage.paused ? "Listening is paused. Start listening to resume event capture." : (vaydeerBridge.mockMode ? "Click a key to generate a mock press and release." : vaydeerBridge.testerStatus); color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 DeviceKeypad {
                                     objectName: "testerKeypad"
                                     Layout.fillWidth: true
@@ -1463,8 +1758,8 @@ ApplicationWindow {
                                     pressedKeys: vaydeerBridge.testerPressedKeys
                                     selectedKey: vaydeerBridge.selectedKey.index
                                     columns: vaydeerBridge.layoutColumns
-                                    interactive: vaydeerBridge.mockMode
-                                    simulateOnClick: vaydeerBridge.mockMode
+                                    interactive: vaydeerBridge.mockMode && !testerPage.paused
+                                    simulateOnClick: vaydeerBridge.mockMode && !testerPage.paused
                                     accent: window.accent
                                     ink: window.ink
                                     muted: window.muted
@@ -1473,7 +1768,7 @@ ApplicationWindow {
                                     onKeySelected: function(keyIndex) { vaydeerBridge.selectKey(keyIndex) }
                                     onKeyActivated: function(keyIndex) { vaydeerBridge.simulateKey(keyIndex) }
                                 }
-                                Label { text: "Vendor reports: fb 03 layer key state xor"; color: window.muted; font.pixelSize: 11; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
+                                Label { visible: window.advancedMode; text: "Vendor reports: fb 03 layer key state xor"; color: window.muted; font.pixelSize: 11; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
                             }
                         }
                             Rectangle {
@@ -1488,21 +1783,40 @@ ApplicationWindow {
                                 spacing: 8
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Label { text: "Vendor event reports"; color: window.ink; font.bold: true; font.pixelSize: 17; Layout.fillWidth: true }
+                                    Label { text: "Event history"; color: window.ink; font.bold: true; font.pixelSize: 17; Layout.fillWidth: true }
                                     Label { text: vaydeerBridge.testerEvents.length + " events"; color: window.muted; font.pixelSize: 12 }
+                                    SecondaryButton {
+                                        text: testerPage.paused ? "Start listening" : "Pause"
+                                        onClicked: {
+                                            testerPage.paused = !testerPage.paused
+                                            vaydeerBridge.setTesterOpen(!testerPage.paused)
+                                        }
+                                    }
+                                    SecondaryButton { text: "Clear"; enabled: vaydeerBridge.testerEvents.length > 0; onClicked: { testerPage.selectedEventIndex = -1; vaydeerBridge.clearTesterEvents() } }
+                                    SecondaryButton { text: "Copy"; enabled: testerPage.selectedEventIndex >= 0; onClicked: vaydeerBridge.copyTesterEvent(testerPage.selectedEventIndex) }
+                                    SecondaryButton { text: "Export"; enabled: vaydeerBridge.testerEvents.length > 0; onClicked: vaydeerBridge.exportTesterSession() }
                                 }
                                 ListView {
+                                    id: testerEventList
                                     Layout.fillWidth: true
                                     Layout.fillHeight: true
                                     clip: true
                                     model: vaydeerBridge.testerEvents
-                                    delegate: Rectangle {
+                                    delegate: Button {
                                         required property var modelData
                                         required property int index
                                         width: ListView.view.width
                                         height: 40
-                                        color: index % 2 ? "transparent" : window.panelRaised
-                                        RowLayout {
+                                        checkable: true
+                                        checked: testerPage.selectedEventIndex === index
+                                        onClicked: testerPage.selectedEventIndex = index
+                                        Accessible.name: modelData.timestamp + ", " + (modelData.key ? "key " + modelData.key : "unknown key") + ", " + modelData.event
+                                        background: Rectangle {
+                                            color: parent.checked ? Qt.rgba(window.info.r, window.info.g, window.info.b, window.darkMode ? 0.18 : 0.12) : (index % 2 ? "transparent" : window.panelRaised)
+                                            border.color: parent.activeFocus || parent.checked ? window.info : "transparent"
+                                            border.width: parent.activeFocus || parent.checked ? 1 : 0
+                                        }
+                                        contentItem: RowLayout {
                                             anchors.fill: parent
                                             anchors.leftMargin: 10
                                             anchors.rightMargin: 10
@@ -1511,10 +1825,16 @@ ApplicationWindow {
                                             Label { text: modelData.key ? "K" + modelData.key : "Unknown"; color: window.ink; Layout.preferredWidth: 54; font.bold: true }
                                             Label { text: modelData.event; color: modelData.event === "Press" ? window.accent : window.muted; Layout.preferredWidth: 58 }
                                             Label { text: modelData.layer ? "Layer " + modelData.layer : "Unknown layer"; color: window.muted; Layout.preferredWidth: 82; font.pixelSize: 12 }
-                                            Label { text: modelData.raw; color: window.muted; font.family: "monospace"; Layout.fillWidth: true; elide: Text.ElideRight }
+                                            Label { text: modelData.source; color: window.muted; Layout.fillWidth: true; font.pixelSize: 12; elide: Text.ElideRight }
+                                            Label { visible: window.advancedMode; text: modelData.raw; color: window.muted; font.family: "monospace"; Layout.preferredWidth: 192; elide: Text.ElideRight }
                                         }
                                     }
-                                    footer: Label { visible: vaydeerBridge.testerEvents.length === 0; text: "No key events yet."; color: window.muted; padding: 10 }
+                                    footer: Item {
+                                        visible: vaydeerBridge.testerEvents.length === 0
+                                        width: testerEventList.width
+                                        height: 150
+                                        EmptyState { anchors.centerIn: parent; title: "Press a keypad key to begin testing"; body: testerPage.paused ? "Start listening to see physical keypad events." : "Press and release events will appear here. Select an event to copy a readable summary." }
+                                    }
                                 }
                             }
                             }
@@ -1524,47 +1844,189 @@ ApplicationWindow {
 
                 // Diagnostics
                 Item {
-                    ColumnLayout {
+                    ScrollView {
                         anchors.fill: parent
-                        anchors.margins: 24
-                        spacing: 14
-                        RowLayout {
-                            Layout.fillWidth: true
-                            SectionTitle { text: "Diagnostics"; hint: "Exports omit serial numbers, home paths, vendor binaries, and raw installers." }
-                            Button { text: "Refresh"; onClicked: vaydeerBridge.refreshDiagnostics() }
-                            Button { text: "Copy summary"; onClicked: vaydeerBridge.copyDiagnosticSummary() }
-                            Button { text: "Export diagnostics"; onClicked: vaydeerBridge.exportDiagnostics() }
-                        }
-                        GridLayout {
-                            Layout.fillWidth: true
-                            columns: 2
-                            rowSpacing: 12
-                            columnSpacing: 12
-                            Repeater {
-                                model: [["Command interface", "Interface 0 / vendor configuration"], ["Keepalive interface", "Interface 2 / read-only"], ["Keepalive status", vaydeerBridge.device.keepalive], ["Permission status", vaydeerBridge.device.permissions]]
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 82
-                                    color: window.panel
-                                    radius: 6
-                                    border.color: window.line
-                                    ColumnLayout {
-                                        anchors.fill: parent
-                                        anchors.margins: 13
-                                        Label { text: modelData[0]; color: window.muted; font.pixelSize: 12 }
-                                        Label { text: modelData[1]; color: window.ink; font.bold: true; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        contentWidth: availableWidth
+                        clip: true
+                        ColumnLayout {
+                            width: Math.max(0, parent.width - 56)
+                            x: 28
+                            y: 24
+                            spacing: window.space16
+                            PageHeader {
+                                title: "Diagnostics"
+                                subtitle: "Check keypad connection, permissions, and the Background service. Exports are sanitized."
+                                status: vaydeerBridge.connection.connected && vaydeerBridge.service.running && vaydeerBridge.service.reachable ? "Healthy" : "Needs attention"
+                            }
+                            InfoBanner {
+                                visible: !vaydeerBridge.connection.connected
+                                title: "Keypad not detected"
+                                body: "Reconnect the USB cable or try another port, then run diagnostics again."
+                                bannerColor: window.danger
+                            }
+                            InfoBanner {
+                                visible: vaydeerBridge.connection.connected && (!vaydeerBridge.service.running || !vaydeerBridge.service.reachable)
+                                title: "Background service stopped or unavailable"
+                                body: "Start the service in Setup to enable Linux actions and keepalive support."
+                                bannerColor: window.amber
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                PrimaryButton { text: "Run diagnostics"; onClicked: vaydeerBridge.refreshDiagnostics() }
+                                SecondaryButton { text: "Copy summary"; onClicked: vaydeerBridge.copyDiagnosticSummary() }
+                                SecondaryButton { text: "Export diagnostics"; onClicked: vaydeerBridge.exportDiagnostics() }
+                                Item { Layout.fillWidth: true }
+                                SecondaryButton { text: "Setup"; onClicked: window.navigate(window.setupPageIndex) }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: diagnosticRows.implicitHeight + 32
+                                color: window.panel
+                                radius: window.panelRadius
+                                border.color: window.line
+                                ColumnLayout {
+                                    id: diagnosticRows
+                                    anchors.fill: parent
+                                    anchors.margins: window.space16
+                                    spacing: 12
+                                    SectionTitle { text: "Health summary"; hint: "Use Setup for guided repair steps. Advanced mode includes technical detail below." }
+                                    GridLayout {
+                                        Layout.fillWidth: true
+                                        columns: width > 820 ? 2 : 1
+                                        rowSpacing: 12
+                                        columnSpacing: 24
+                                        HealthStatusRow {
+                                            title: "Keypad connection"
+                                            detail: vaydeerBridge.connection.connected ? vaydeerBridge.device.model + " is connected and readable." : vaydeerBridge.connection.message
+                                            state: vaydeerBridge.connection.connected ? "ready" : "error"
+                                        }
+                                        HealthStatusRow {
+                                            title: "Background service"
+                                            detail: vaydeerBridge.service.detail
+                                            state: vaydeerBridge.service.running && vaydeerBridge.service.reachable ? "info" : "warning"
+                                        }
+                                        Repeater {
+                                            model: vaydeerBridge.setupChecks.filter(function(item) { return item.label !== "User service" })
+                                            delegate: HealthStatusRow {
+                                                required property var modelData
+                                                title: window.setupLabel(modelData.label)
+                                                detail: window.setupDetail(modelData.label, modelData.status)
+                                                state: modelData.status === "pass" ? "ready" : modelData.status === "warn" ? "warning" : "error"
+                                            }
+                                        }
                                     }
                                 }
                             }
+                            Rectangle {
+                                objectName: "advancedDiagnosticsPanel"
+                                visible: window.advancedMode
+                                Layout.fillWidth: true
+                                implicitHeight: advancedDiagnostics.implicitHeight + 32
+                                color: window.panel
+                                radius: window.panelRadius
+                                border.color: window.line
+                                ColumnLayout {
+                                    id: advancedDiagnostics
+                                    anchors.fill: parent
+                                    anchors.margins: window.space16
+                                    spacing: window.space8
+                                    SectionTitle { text: "Technical details"; hint: "Raw information is shown only in Advanced mode." }
+                                    Label { text: vaydeerBridge.diagnosticSummary; color: window.secondaryText; wrapMode: Text.WrapAnywhere; font.family: "monospace"; font.pixelSize: 11; Layout.fillWidth: true }
+                                }
+                            }
                         }
-                        Rectangle {
-                            Layout.fillWidth: true
-                            Layout.fillHeight: true
-                            color: window.panel
-                            radius: 6
-                            border.color: window.line
-                            Label { anchors.fill: parent; anchors.margins: 16; text: vaydeerBridge.diagnosticSummary; color: window.muted; wrapMode: Text.WordWrap; verticalAlignment: Text.AlignTop; font.family: "monospace" }
+                    }
+                }
+
+                // Setup
+                Item {
+                    ScrollView {
+                        anchors.fill: parent
+                        contentWidth: availableWidth
+                        clip: true
+                        ColumnLayout {
+                            width: Math.max(0, parent.width - 56)
+                            x: 28
+                            y: 24
+                            spacing: window.space16
+                            PageHeader {
+                                title: "Setup"
+                                subtitle: "Prepare this Linux computer to keep the keypad active and run Linux actions."
+                                status: vaydeerBridge.service.running ? "Background service running" : "Setup needed"
+                            }
+                            InfoBanner {
+                                title: "What Setup changes"
+                                body: "Setup verifies the keypad, permissions, and Background service. It never changes keypad mappings or firmware."
+                                bannerColor: window.info
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: setupRows.implicitHeight + 32
+                                color: window.surface
+                                radius: window.panelRadius
+                                border.color: window.border
+                                ColumnLayout {
+                                    id: setupRows
+                                    anchors.fill: parent
+                                    anchors.margins: window.space16
+                                    spacing: 12
+                                    SectionTitle { text: "Setup checklist"; hint: "Each step is safe to repeat. Permissions changes require reconnecting the keypad." }
+                                    GridLayout {
+                                        Layout.fillWidth: true
+                                        columns: width > 820 ? 2 : 1
+                                        rowSpacing: 12
+                                        columnSpacing: 24
+                                        HealthStatusRow {
+                                            title: "Keypad"
+                                            detail: vaydeerBridge.connection.connected ? vaydeerBridge.device.model + " is available." : vaydeerBridge.connection.message
+                                            state: vaydeerBridge.connection.connected ? "ready" : "error"
+                                        }
+                                        Repeater {
+                                            model: vaydeerBridge.setupChecks.filter(function(item) { return item.label !== "User service" })
+                                            delegate: HealthStatusRow {
+                                                required property var modelData
+                                                title: window.setupLabel(modelData.label)
+                                                detail: window.setupDetail(modelData.label, modelData.status)
+                                                state: modelData.status === "pass" ? "ready" : modelData.status === "warn" ? "warning" : "error"
+                                            }
+                                        }
+                                        HealthStatusRow {
+                                            title: "Background service"
+                                            detail: vaydeerBridge.service.detail
+                                            state: vaydeerBridge.service.running && vaydeerBridge.service.reachable ? "info" : "warning"
+                                        }
+                                    }
+                                }
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: window.space8
+                                PrimaryButton {
+                                    visible: !vaydeerBridge.service.installed
+                                    text: "Install Background service"
+                                    buttonColor: window.info
+                                    onClicked: vaydeerBridge.installUserService()
+                                    Accessible.name: "Install and start the Vaydeer Studio Background service"
+                                }
+                                PrimaryButton {
+                                    visible: vaydeerBridge.service.installed && !vaydeerBridge.service.running
+                                    text: "Start Background service"
+                                    buttonColor: window.info
+                                    onClicked: vaydeerBridge.reloadService()
+                                }
+                                SecondaryButton { text: "Check setup"; onClicked: vaydeerBridge.refreshDiagnostics() }
+                                SecondaryButton { text: "Reconnect keypad"; onClicked: vaydeerBridge.reconnectDevice() }
+                                Item { Layout.fillWidth: true }
+                                SecondaryButton { text: "Permissions help"; onClicked: vaydeerBridge.showSetupCommand() }
+                            }
+                            Label {
+                                visible: window.advancedMode
+                                text: "Technical name: vaydeer-studiod. It is a per-user systemd service and keeps only the verified vendor event interface open read-only."
+                                color: window.secondaryText
+                                font.pixelSize: 12
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
                         }
                     }
                 }
@@ -1576,18 +2038,18 @@ ApplicationWindow {
                         contentWidth: availableWidth
                         clip: true
                         ColumnLayout {
-                            width: Math.max(0, parent.width - 48)
-                            x: 24
-                            y: 20
-                            spacing: 14
-                            RowLayout {
-                                Layout.fillWidth: true
-                                SectionTitle { text: "Help"; hint: "A short guide to the device, the local service, and each workspace." }
+                            width: Math.max(0, parent.width - 56)
+                            x: 28
+                            y: 24
+                            spacing: window.space16
+                            PageHeader {
+                                title: "Help"
+                                subtitle: "A short guide to Vaydeer Studio, keypad memory, and Linux-only actions."
                             }
                             ScopeExplainer {
                                 deviceText: "The keypad stores supported keyboard-style mappings, its layers, and layer names. Those assignments keep working when it is connected to another computer."
-                                hostText: "vaydeer-studiod is the small local background service. It maintains Linux activation and runs Linux bindings after Studio is closed. The full Studio app is only needed to configure and inspect the keypad."
-                                note: "The service is installed and managed from Devices."
+                                hostText: "The Background service maintains Linux activation and runs Linux actions after Studio is closed. The Studio app is needed only to configure and inspect the keypad."
+                                note: "Use Setup to install or repair the Background service."
                             }
                             Rectangle {
                                 Layout.fillWidth: true
@@ -1602,7 +2064,7 @@ ApplicationWindow {
                                     spacing: 8
                                     Label { text: "Start here"; color: window.ink; font.pixelSize: 16; font.bold: true }
                                     Label {
-                                        text: "1. Open Devices and confirm the keypad and local service are ready.  2. Read the keypad on On-device mappings.  3. Edit a key, review the diff, and apply only when ready.  4. Save or export the profile when you want to keep the draft."
+                                        text: "1. Open Overview to check the keypad and Background service.  2. Read the keypad on On-device keys.  3. Edit a draft, review it, and write only when ready.  4. Save or export the profile to keep your configuration."
                                         color: window.muted
                                         wrapMode: Text.WordWrap
                                         Layout.fillWidth: true
@@ -1618,28 +2080,36 @@ ApplicationWindow {
                                 Repeater {
                                     model: [
                                         {
-                                            "title": "Devices",
-                                            "body": "Check connection, permissions, interface discovery, and the local service. Install or enable vaydeer-studiod here so Linux activation and Linux bindings continue after Studio closes."
+                                            "title": "Overview",
+                                            "body": "See whether the keypad and Background service are ready, then choose keypad memory or Linux actions."
                                         },
                                         {
-                                            "title": "On-device mappings",
-                                            "body": "Select a layer and physical key, choose a supported keyboard-style action, then save it to the draft. Review changes before applying; a backup and read-back verification are always used."
+                                            "title": "On-device keys",
+                                            "body": "Select a layer and physical key, choose a supported keyboard-style action, then save it to the draft. Review and write to keypad only when ready."
                                         },
                                         {
-                                            "title": "Linux bindings",
-                                            "body": "Create host-only actions such as launching an app, opening a URL, or running a command. These run only on Linux while vaydeer-studiod is running; they are not written to the keypad."
+                                            "title": "Linux actions",
+                                            "body": "Create actions such as launching an app, opening a URL, or running a command. These run only on Linux while the Background service is available."
                                         },
                                         {
                                             "title": "Profiles",
-                                            "body": "Use profiles to save, duplicate, import, export, and organize mapping drafts and Linux bindings. A profile can target Linux, macOS, or Windows; only Linux bindings run on this host."
+                                            "body": "Use profiles to save, duplicate, import, export, and organize keypad drafts and Linux actions. Only Linux-targeted actions run on this host."
                                         },
                                         {
-                                            "title": "Live key tester",
-                                            "body": "Open this page to see physical press and release reports from the vendor event interface. It is useful for diagnosis and key selection, and does not record keys after you leave the page."
+                                            "title": "Live tester",
+                                            "body": "See physical press and release events without changing any settings. You can pause, clear, copy, or export the current event session."
                                         },
                                         {
                                             "title": "Diagnostics",
-                                            "body": "Refresh the hardware and service checks when something is not working. Copy or export the sanitized diagnostic summary when reporting an issue."
+                                            "body": "Check connection, permissions, and service health. Copy or export the sanitized summary when reporting an issue."
+                                        },
+                                        {
+                                            "title": "Setup",
+                                            "body": "Follow the short checklist to install or repair permissions and the Background service. Setup never changes keypad mappings."
+                                        },
+                                        {
+                                            "title": "Basic and Advanced",
+                                            "body": "Basic mode keeps everyday configuration simple. Advanced mode reveals technical values, raw reports, and optional command controls without changing your data."
                                         }
                                     ]
                                     delegate: Rectangle {
@@ -1674,13 +2144,53 @@ ApplicationWindow {
             }
         }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 28
-            color: window.panel
-            border.color: window.line
-            border.width: 1
-            Label { anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16; text: vaydeerBridge.statusMessage; color: window.muted; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight; font.pixelSize: 11 }
+    }
+
+    Rectangle {
+        id: statusToast
+        property string message: ""
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        anchors.rightMargin: 24
+        anchors.bottomMargin: 24
+        width: Math.min(460, toastLabel.implicitWidth + 40)
+        height: Math.max(42, toastLabel.implicitHeight + 20)
+        visible: opacity > 0
+        opacity: 0
+        z: 20
+        color: window.raisedSurface
+        radius: window.panelRadius
+        border.color: window.border
+        border.width: 1
+        Behavior on opacity { NumberAnimation { duration: 140 } }
+        function showMessage(text) {
+            message = text
+            opacity = 1
+            hideTimer.restart()
+        }
+        Label {
+            id: toastLabel
+            anchors.fill: parent
+            anchors.margins: 10
+            text: statusToast.message
+            color: window.primaryText
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: 12
+        }
+        Timer {
+            id: hideTimer
+            interval: 4200
+            onTriggered: statusToast.opacity = 0
+        }
+    }
+
+    Connections {
+        target: vaydeerBridge
+        function onStatusChanged() {
+            statusToast.showMessage(vaydeerBridge.statusMessage)
         }
     }
 }
