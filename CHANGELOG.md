@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.15 - 2026-07-16
+
+- Normalize text-field and text-area foreground, placeholder, disabled,
+  selection, and focus styling across dark and light themes.
+- Add a QML smoke assertion that verifies readable dark and light input colors,
+  and refresh affected UI screenshots.
+
 ## 0.1.14 - 2026-07-16
 
 - Polish the desktop shell with a fixed application bar, restrained design

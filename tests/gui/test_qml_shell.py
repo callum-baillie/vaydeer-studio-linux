@@ -50,6 +50,21 @@ def test_qml_shell_switches_modes_and_keeps_the_app_bar_visible(qtbot, monkeypat
     qtbot.waitUntil(lambda: window.property("advancedMode") is True, timeout=2_000)
     assert advanced_panel.property("visible") is True
 
+    window.setProperty("navIndex", 2)
+    qtbot.waitUntil(lambda: pages.property("currentIndex") == 2, timeout=2_000)
+    target_field = window.findChild(QObject, "linuxActionTarget")
+    assert target_field is not None
+
+    preferences.setProperty("darkMode", True)
+    qtbot.waitUntil(lambda: window.property("darkMode") is True, timeout=2_000)
+    assert target_field.property("color").name() == "#e8eef2"
+    assert target_field.property("placeholderTextColor").name() == "#93a4b0"
+
+    preferences.setProperty("darkMode", False)
+    qtbot.waitUntil(lambda: window.property("darkMode") is False, timeout=2_000)
+    assert target_field.property("color").name() == "#18242d"
+    assert target_field.property("placeholderTextColor").name() == "#687b87"
+
     window.setProperty("width", 1_280)
     window.setProperty("height", 720)
     qtbot.wait(50)

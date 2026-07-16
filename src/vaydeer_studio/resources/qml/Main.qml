@@ -32,6 +32,9 @@ ApplicationWindow {
     property color primaryText: darkMode ? "#E8EEF2" : "#18242D"
     property color secondaryText: darkMode ? "#A9B8C2" : "#5C6E79"
     property color disabledText: darkMode ? "#6E7E89" : "#8A9AA4"
+    property color placeholderText: darkMode ? "#93A4B0" : "#687B87"
+    property color inputBackground: darkMode ? "#111A21" : "#FFFFFF"
+    property color inputDisabledBackground: darkMode ? "#172129" : "#EDF2F4"
     property color border: darkMode ? "#33414C" : "#D3DEE3"
     property color accent: "#1AAE99"
     property color info: "#4D91D0"
@@ -60,6 +63,7 @@ ApplicationWindow {
     palette.windowText: primaryText
     palette.highlight: accent
     palette.highlightedText: "#FFFFFF"
+    palette.placeholderText: placeholderText
 
     Shortcut {
         sequence: "Ctrl+S"
@@ -320,6 +324,35 @@ ApplicationWindow {
         }
     }
 
+    component FormTextField: TextField {
+        implicitHeight: window.controlHeight
+        color: enabled ? window.primaryText : window.disabledText
+        placeholderTextColor: window.placeholderText
+        selectionColor: window.info
+        selectedTextColor: "#FFFFFF"
+        font.pixelSize: 13
+        background: Rectangle {
+            radius: 4
+            color: parent.enabled ? window.inputBackground : window.inputDisabledBackground
+            border.width: parent.activeFocus ? 2 : 1
+            border.color: parent.activeFocus ? window.accent : window.border
+        }
+    }
+
+    component FormTextArea: TextArea {
+        color: enabled ? window.primaryText : window.disabledText
+        placeholderTextColor: window.placeholderText
+        selectionColor: window.info
+        selectedTextColor: "#FFFFFF"
+        font.pixelSize: 13
+        background: Rectangle {
+            radius: 4
+            color: parent.enabled ? window.inputBackground : window.inputDisabledBackground
+            border.width: parent.activeFocus ? 2 : 1
+            border.color: parent.activeFocus ? window.accent : window.border
+        }
+    }
+
     component ScopeExplainer: Rectangle {
         id: scopeExplainer
         property string deviceText: ""
@@ -554,7 +587,7 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
             }
-            TextField {
+            FormTextField {
                 id: hardwareWritePhrase
                 Layout.fillWidth: true
                 placeholderText: "Type APPLY"
@@ -919,7 +952,7 @@ ApplicationWindow {
                                             onActivated: vaydeerBridge.selectLayer(vaydeerBridge.layers[currentIndex].index)
                                             Accessible.name: "Select profile layer"
                                         }
-                                        TextField {
+                                        FormTextField {
                                             id: mappingLayerName
                                             Layout.preferredWidth: 146
                                             text: window.selectedLayerName()
@@ -1072,13 +1105,13 @@ ApplicationWindow {
                                             Accessible.name: "Assignment action category"
                                         }
                                         Label { text: "Keypad label"; color: window.muted; font.pixelSize: 12 }
-                                        TextField { id: labelField; Layout.fillWidth: true; placeholderText: "Optional label shown in Studio"; selectByMouse: true; Accessible.name: "Selected key label" }
+                                        FormTextField { id: labelField; Layout.fillWidth: true; placeholderText: "Optional label shown in Studio"; selectByMouse: true; Accessible.name: "Selected key label" }
                                         Label { visible: ["Keyboard key", "Modifier", "Key combination", "Media", "System control"].indexOf(categoryBox.currentText) !== -1; text: categoryBox.currentText === "Key combination" ? "Shortcut values" : "Key value"; color: window.muted; font.pixelSize: 12 }
                                         RowLayout {
                                             visible: ["Keyboard key", "Modifier", "Key combination", "Media", "System control"].indexOf(categoryBox.currentText) !== -1
                                             Layout.fillWidth: true
                                             spacing: 7
-                                            TextField {
+                                            FormTextField {
                                                 id: codeField
                                                 Layout.fillWidth: true
                                                 placeholderText: categoryBox.currentText === "Key combination" ? "Ctrl + Alt + P" : "Choose a value or capture a key"
@@ -1188,7 +1221,7 @@ ApplicationWindow {
                                                 wrapMode: Text.WordWrap
                                                 font.pixelSize: 11
                                             }
-                                            TextArea {
+                                            FormTextArea {
                                                 id: macroField
                                                 Layout.fillWidth: true
                                                 Layout.preferredHeight: 64
@@ -1231,7 +1264,7 @@ ApplicationWindow {
                                                 elide: Text.ElideRight
                                             }
                                         }
-                                        TextField {
+                                        FormTextField {
                                             id: detailField
                                             visible: window.advancedMode && categoryBox.currentText !== "Macro" && ["Keyboard key", "Modifier", "Key combination", "Media", "System control", "Disabled"].indexOf(categoryBox.currentText) === -1
                                             Layout.fillWidth: true
@@ -1416,13 +1449,13 @@ ApplicationWindow {
                                                 Accessible.name: "Linux action type"
                                             }
                                             Label { text: window.bindingTargetLabel(bindingAction.currentValue); color: window.muted; font.pixelSize: 12 }
-                                            TextField { id: bindingTarget; Layout.fillWidth: true; placeholderText: window.bindingTargetHint(bindingAction.currentValue); selectByMouse: true; Accessible.name: "Linux action target" }
+                                            FormTextField { id: bindingTarget; objectName: "linuxActionTarget"; Layout.fillWidth: true; placeholderText: window.bindingTargetHint(bindingAction.currentValue); selectByMouse: true; Accessible.name: "Linux action target" }
                                             Label { visible: ["application", "command", "script"].indexOf(bindingAction.currentValue) !== -1 || window.advancedMode; text: "Arguments"; color: window.muted; font.pixelSize: 12 }
-                                            TextField { visible: ["application", "command", "script"].indexOf(bindingAction.currentValue) !== -1 || window.advancedMode; id: bindingArguments; Layout.fillWidth: true; placeholderText: "--option \"quoted value\""; selectByMouse: true; Accessible.name: "Linux action argument array" }
+                                            FormTextField { visible: ["application", "command", "script"].indexOf(bindingAction.currentValue) !== -1 || window.advancedMode; id: bindingArguments; Layout.fillWidth: true; placeholderText: "--option \"quoted value\""; selectByMouse: true; Accessible.name: "Linux action argument array" }
                                             Label { text: "Trigger"; color: window.muted; font.pixelSize: 12 }
                                             ComboBox { id: bindingTrigger; Layout.fillWidth: true; model: ["press", "release"]; Accessible.name: "Linux binding trigger" }
                                             Label { visible: window.advancedMode; text: "Active window"; color: window.muted; font.pixelSize: 12 }
-                                            TextField { visible: window.advancedMode; id: bindingWindow; Layout.fillWidth: true; placeholderText: "Optional title or app pattern"; selectByMouse: true; Accessible.name: "Active window pattern" }
+                                            FormTextField { visible: window.advancedMode; id: bindingWindow; Layout.fillWidth: true; placeholderText: "Optional title or app pattern"; selectByMouse: true; Accessible.name: "Active window pattern" }
                                         }
                                         CheckBox { id: allowShell; visible: window.advancedMode && bindingAction.currentValue === "command"; text: "Allow shell execution"; Accessible.name: "Allow shell execution for this action" }
                                         InfoBanner { visible: window.advancedMode && bindingAction.currentValue === "command" && allowShell.checked; title: "Shell execution enabled"; body: "The Background service will run this command through a shell. Prefer a direct executable with separate arguments when possible."; bannerColor: window.amber }
@@ -1532,7 +1565,7 @@ ApplicationWindow {
                                     RowLayout {
                                         Layout.fillWidth: true
                                         Label { text: "Profile name"; color: window.muted; font.pixelSize: 12 }
-                                        TextField { id: profileNameField; Layout.fillWidth: true; text: vaydeerBridge.profileName; selectByMouse: true; onEditingFinished: vaydeerBridge.renameProfile(text); Accessible.name: "Current profile name" }
+                                        FormTextField { id: profileNameField; Layout.fillWidth: true; text: vaydeerBridge.profileName; selectByMouse: true; onEditingFinished: vaydeerBridge.renameProfile(text); Accessible.name: "Current profile name" }
                                         Label { text: "Target"; color: window.muted; font.pixelSize: 12 }
                                         ComboBox {
                                             id: profileTargetPlatform
@@ -1588,7 +1621,7 @@ ApplicationWindow {
                                     }
                                     RowLayout {
                                         Layout.fillWidth: true
-                                        TextField { id: importProfilePath; Layout.fillWidth: true; placeholderText: "Profile JSON or YAML path"; selectByMouse: true; Accessible.name: "Profile import path" }
+                                        FormTextField { id: importProfilePath; Layout.fillWidth: true; placeholderText: "Profile JSON or YAML path"; selectByMouse: true; Accessible.name: "Profile import path" }
                                         SecondaryButton { text: "Import"; onClicked: vaydeerBridge.importProfile(importProfilePath.text); Accessible.name: "Import profile" }
                                         SecondaryButton { text: vaydeerBridge.dirty ? "Refresh keypad baseline" : "Read from keypad"; onClicked: vaydeerBridge.readFromDevice(); Accessible.name: "Read device profile without overwriting pending mappings" }
                                         SecondaryButton { text: "Use keypad state"; enabled: vaydeerBridge.dirty; onClicked: vaydeerBridge.discardChanges(); Accessible.name: "Discard pending mappings and use keypad state" }
