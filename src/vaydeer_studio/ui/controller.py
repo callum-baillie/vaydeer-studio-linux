@@ -41,6 +41,7 @@ from vaydeer_studio.service.daemon import request as service_request
 LOGGER = logging.getLogger(__name__)
 _STARTUP_RETRY_DELAYS_MS = (250, 500, 1_000, 1_500, 2_000)
 _CONNECTION_HEALTH_INTERVAL_MS = 1_500
+_TESTER_POLL_INTERVAL_MS = 150
 
 _KEY_CODES = {
     "CTRL": 17,
@@ -103,13 +104,18 @@ class StudioController(QObject):
         self._preview: ApplyPreview | None = None
         self._tester_open = False
         self._tester_events: list[dict[str, str | int]] = []
+        self._tester_status = "Open the tester to begin listening for vendor events."
         self.executor = BindingExecutor(mock_mode=mock)
         self._health_timer: QTimer | None = None
+        self._tester_timer: QTimer | None = None
         if not mock and QGuiApplication.instance() is not None:
             self._health_timer = QTimer(self)
             self._health_timer.setInterval(_CONNECTION_HEALTH_INTERVAL_MS)
             self._health_timer.timeout.connect(self._monitor_device_connection)
             self._health_timer.start()
+            self._tester_timer = QTimer(self)
+            self._tester_timer.setInterval(_TESTER_POLL_INTERVAL_MS)
+            self._tester_timer.timeout.connect(self._poll_tester_events)
 
     def _set_connection(self, state: str, title: str, message: str, recovery: str, connected: bool) -> None:
         self._connection = {
@@ -403,6 +409,14 @@ class StudioController(QObject):
     @Property(list, notify=testerChanged)
     def testerEvents(self) -> list[dict[str, str | int]]:
         return self._tester_events
+
+    @Property(str, notify=testerChanged)
+    def testerStatus(self) -> str:
+        return self._tester_status
+
+    @Property(bool, constant=True)
+    def mockMode(self) -> bool:
+        return self.mock
 
     @Property(list, notify=changed)
     def bindings(self) -> list[dict[str, Any]]:
@@ -743,9 +757,75 @@ class StudioController(QObject):
     @Slot(bool)
     def setTesterOpen(self, opened: bool) -> None:
         self._tester_open = opened
+        if self.mock:
+            self._tester_status = "Click a keypad button to generate mock press and release reports."
+        elif opened:
+            self._set_service_tester(True)
+            if self._tester_timer is not None:
+                self._tester_timer.start()
+        else:
+            if self._tester_timer is not None:
+                self._tester_timer.stop()
+            self._set_service_tester(False)
+            self._tester_status = "Tester closed; vendor events are no longer recorded for this screen."
         if not opened:
             self._tester_events = []
         self.testerChanged.emit()
+
+    def _set_service_tester(self, enabled: bool) -> None:
+        try:
+            response = service_request(default_socket_path(), {"method": "set_tester", "enabled": enabled})
+            result = response.get("result", {})
+            keepalive = result.get("keepalive", {})
+            self._service_keepalive = str(keepalive.get("state", self._service_keepalive))
+            if not response.get("ok"):
+                raise OSError(str(response.get("error", "tester service request failed")))
+            self._tester_status = (
+                "Listening on the read-only vendor event interface. Press a physical keypad key."
+                if enabled
+                else "Tester closed; vendor events are no longer recorded for this screen."
+            )
+        except OSError as error:
+            self._tester_status = f"Live event service unavailable: {error}"
+            self._service_keepalive = "Service unavailable"
+            LOGGER.warning("Vaydeer live tester service request failed: %s", error)
+        self.changed.emit()
+
+    def _poll_tester_events(self) -> None:
+        if self.mock or not self._tester_open:
+            return
+        try:
+            response = service_request(default_socket_path(), {"method": "drain_tester_events"})
+            if not response.get("ok"):
+                raise OSError(str(response.get("error", "tester event request failed")))
+            result = response.get("result", {})
+            keepalive = result.get("keepalive", {})
+            self._service_keepalive = str(keepalive.get("state", self._service_keepalive))
+            events = result.get("events", [])
+            if events:
+                for item in events:
+                    key_index = item.get("key_index")
+                    layer_index = item.get("layer_index")
+                    pressed = item.get("pressed")
+                    self._tester_events.insert(
+                        0,
+                        {
+                            "timestamp": str(item.get("timestamp", "")),
+                            "key": key_index + 1 if isinstance(key_index, int) else 0,
+                            "event": "Press" if pressed is True else "Release" if pressed is False else "Unknown",
+                            "layer": layer_index + 1 if isinstance(layer_index, int) else 0,
+                            "raw": str(item.get("raw", "")),
+                        },
+                    )
+                self._tester_events = self._tester_events[:30]
+                self._tester_status = "Receiving vendor key events."
+                self.testerChanged.emit()
+            self.changed.emit()
+        except OSError as error:
+            self._tester_status = f"Live event service unavailable: {error}"
+            self._service_keepalive = "Service unavailable"
+            self.testerChanged.emit()
+            self.changed.emit()
 
     @Slot(int)
     def simulateKey(self, key_index: int) -> None:
@@ -759,7 +839,7 @@ class StudioController(QObject):
                     "timestamp": datetime.now(UTC).strftime("%H:%M:%S.%f")[:-3],
                     "key": key_index + 1,
                     "event": "Press" if pressed else "Release",
-                    "layer": self._selected_layer,
+                    "layer": self._selected_layer + 1,
                     "raw": raw[:6].hex(" "),
                 },
             )

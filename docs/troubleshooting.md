@@ -20,6 +20,18 @@ service, protocol initialization failure, or an unknown firmware that is
 intentionally read-only. It is safe to run while the GUI is open: command
 transactions are serialized on the selected HID node.
 
+## Live key tester shows no events
+
+Open **Live key tester**, wait for the message that it is listening, then press
+a physical keypad key. Opening this screen enables read-only event consumption
+through `vaydeer-studiod`; it does not open or write the command interface.
+The service must show `active_readonly` in `vaydeer-studio-cli service-status`.
+
+If an `Unknown` event appears, export diagnostics and include the displayed raw
+six-byte event prefix in a report. If the service changes to
+`waiting_for_device`, Linux briefly lost the keypad interface: wait for it to
+recover, check the USB cable or port, and do not use a firmware updater.
+
 When the keypad is unplugged, the UI changes to **Vaydeer keypad disconnected**
 and checks for a dynamically matched command interface every 1.5 seconds. On
 reconnect it refreshes the device snapshot automatically. A manual reconnect

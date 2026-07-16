@@ -55,3 +55,32 @@ def test_service_ipc_dispatches_mock_binding(tmp_path: Path) -> None:
     assert response["result"]["executed"][0]["ok"]
     request(path, {"method": "shutdown"})
     thread.join(timeout=1)
+
+
+def test_service_ipc_relays_tester_events_only_while_enabled(tmp_path: Path) -> None:
+    path = tmp_path / "vaydeer.sock"
+    daemon = ServiceDaemon(path, mock=True)
+    thread = threading.Thread(target=daemon.serve_forever, daemon=True)
+    thread.start()
+    for _ in range(50):
+        if path.exists():
+            break
+        time.sleep(0.01)
+
+    assert request(path, {"method": "set_tester", "enabled": True})["result"]["tester_active"]
+    event = bytes([0xFB, 0x03, 0, 2, 0])
+    raw = event + bytes([event[0] ^ event[1] ^ event[2] ^ event[3] ^ event[4]])
+    assert request(path, {"method": "vendor_event", "hex": raw.hex()})["result"]["accepted"]
+    drained = request(path, {"method": "drain_tester_events"})["result"]
+    assert drained["events"][0]["key_index"] == 2
+    assert drained["events"][0]["pressed"] is True
+    unknown = bytes([0x01, 0x02, 0x03])
+    assert request(path, {"method": "vendor_event", "hex": unknown.hex()})["result"]["accepted"] is False
+    unknown_drained = request(path, {"method": "drain_tester_events"})["result"]
+    assert unknown_drained["events"][0]["valid"] is False
+    assert unknown_drained["events"][0]["key_index"] is None
+    assert request(path, {"method": "set_tester", "enabled": False})["result"]["tester_active"] is False
+    assert request(path, {"method": "drain_tester_events"})["result"]["events"] == []
+
+    request(path, {"method": "shutdown"})
+    thread.join(timeout=1)

@@ -33,9 +33,13 @@ program plus arguments by default. Shell execution is not the default path.
 
 ## Live tester and diagnostics
 
-The live tester displays only while explicitly open and clears events when it
-closes. Diagnostics include matched interfaces, permission state, keepalive
-state, device information, and recent UI status. The diagnostics page has a
-refresh control and copyable summary. Exported bundles omit USB serial numbers,
-home paths, raw vendor binaries, and full report descriptors by default;
-perform a final personal-data review before sharing.
+The live tester asks the user service to read the vendor event interface only
+while the screen is open. It clears its event queue when it closes, and the
+service lease expires automatically if the UI stops polling. The tester shows
+validated press/release reports and preserves an unrecognized raw event as an
+`Unknown` row for troubleshooting. Diagnostics include matched interfaces,
+permission state, keepalive state, device information, and recent UI status.
+The diagnostics page has a refresh control and copyable summary. Exported
+bundles omit USB serial numbers, home paths, raw vendor binaries, and full
+report descriptors by default; perform a final personal-data review before
+sharing.

@@ -50,6 +50,15 @@ def test_mock_controller_exposes_verified_three_by_three_layout() -> None:
     ]
 
 
+def test_mock_tester_reports_one_based_layer_numbers() -> None:
+    controller = StudioController(mock=True)
+    controller.setTesterOpen(True)
+    controller.simulateKey(0)
+
+    assert [event["event"] for event in controller.testerEvents] == ["Release", "Press"]
+    assert all(event["layer"] == 1 for event in controller.testerEvents)
+
+
 def test_controller_edits_profile_and_generates_diff() -> None:
     controller = StudioController(mock=True)
     controller.selectKey(0)
@@ -135,3 +144,53 @@ def test_connected_controller_explains_keepalive_service_failure(monkeypatch) ->
 
     assert controller.connection["state"] == "connected"
     assert "Interface-2 keepalive is Service unavailable" in controller.device["warning"]
+
+
+def test_real_controller_relays_tester_events_from_service(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    responses = iter(
+        [
+            {"ok": True, "result": {"keepalive": {"state": "active_readonly"}}},
+            {"ok": True, "result": {"keepalive": {"state": "active_readonly"}, "tester_active": True}},
+            {
+                "ok": True,
+                "result": {
+                    "keepalive": {"state": "active_readonly"},
+                    "events": [
+                        {
+                            "timestamp": "12:34:56.789",
+                            "key_index": 4,
+                            "layer_index": 0,
+                            "pressed": True,
+                            "raw": "fb 03 00 04 00 fc",
+                        }
+                    ],
+                },
+            },
+            {"ok": True, "result": {"keepalive": {"state": "active_readonly"}, "tester_active": False}},
+        ]
+    )
+    monkeypatch.setattr(controller_module, "discover_linux_hidraw", lambda: _interfaces("1-2:1.0"))
+    monkeypatch.setattr(controller_module, "open_command_transport", lambda _path: MockJP1011Transport())
+
+    def service_request(_path, payload):
+        calls.append(payload)
+        return next(responses)
+
+    monkeypatch.setattr(controller_module, "service_request", service_request)
+    controller = StudioController(mock=False)
+    if controller._health_timer is not None:
+        controller._health_timer.stop()
+    controller.setTesterOpen(True)
+    controller._poll_tester_events()
+
+    assert controller.testerEvents[0] == {
+        "timestamp": "12:34:56.789",
+        "key": 5,
+        "event": "Press",
+        "layer": 1,
+        "raw": "fb 03 00 04 00 fc",
+    }
+    controller.setTesterOpen(False)
+    assert controller.testerEvents == []
+    assert [item["method"] for item in calls] == ["status", "set_tester", "drain_tester_events", "set_tester"]

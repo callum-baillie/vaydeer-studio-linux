@@ -610,13 +610,13 @@ ApplicationWindow {
                                 anchors.margins: 18
                                 spacing: 12
                                 Label { text: "Live key tester"; color: window.ink; font.pixelSize: 17; font.bold: true }
-                                Label { text: "Events are shown only while this screen is open. In mock mode, click a key to generate its press and release reports."; color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Label { text: vaydeerBridge.mockMode ? "Click a key to generate mock press and release reports." : vaydeerBridge.testerStatus; color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 GridLayout {
                                     Layout.fillWidth: true
                                     columns: vaydeerBridge.layoutColumns
                                     Repeater {
                                         model: vaydeerBridge.keys
-                                        delegate: Button { required property var modelData; text: "K" + (modelData.index + 1); Layout.fillWidth: true; Layout.preferredHeight: 52; onClicked: vaydeerBridge.simulateKey(modelData.index); Accessible.name: "Simulate key " + (modelData.index + 1) }
+                                        delegate: Button { required property var modelData; text: "K" + (modelData.index + 1); enabled: vaydeerBridge.mockMode; Layout.fillWidth: true; Layout.preferredHeight: 52; onClicked: vaydeerBridge.simulateKey(modelData.index); Accessible.name: vaydeerBridge.mockMode ? "Simulate key " + (modelData.index + 1) : "Physical key " + (modelData.index + 1) }
                                     }
                                 }
                                 Item { Layout.fillHeight: true }
@@ -645,9 +645,9 @@ ApplicationWindow {
                                         anchors.leftMargin: 10
                                         anchors.rightMargin: 10
                                         Label { text: modelData.timestamp; color: window.muted; Layout.preferredWidth: 110 }
-                                        Label { text: "K" + modelData.key; color: window.ink; Layout.preferredWidth: 52 }
+                                        Label { text: modelData.key ? "K" + modelData.key : "Unknown"; color: window.ink; Layout.preferredWidth: 64 }
                                         Label { text: modelData.event; color: modelData.event === "Press" ? window.accent : window.muted; Layout.preferredWidth: 64 }
-                                        Label { text: "Layer " + (modelData.layer + 1); color: window.muted; Layout.preferredWidth: 65 }
+                                        Label { text: modelData.layer ? "Layer " + modelData.layer : "Unknown layer"; color: window.muted; Layout.preferredWidth: 90 }
                                         Label { text: modelData.raw; color: window.muted; font.family: "monospace" }
                                     }
                                 }

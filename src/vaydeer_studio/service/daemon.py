@@ -8,7 +8,9 @@ import os
 import socket
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +23,10 @@ from vaydeer_studio.devices.mock import MockJP1011Transport
 
 from .bindings import BindingExecutor, parse_vendor_event
 from .keepalive import KeepaliveManager
+
+MAX_EVENTS_PER_TICK = 32
+TESTER_EVENT_LIMIT = 128
+TESTER_LEASE_SECONDS = 2.0
 
 
 def default_socket_path() -> Path:
@@ -48,15 +54,19 @@ class ServiceDaemon:
         self.executor = executor or BindingExecutor(mock_mode=mock)
         active_profile = ProfileStore().load_active()
         self.bindings = [] if active_profile is None else active_profile.linux_bindings
-        self.keepalive.set_event_listening(bool(self.bindings))
         self.mock_transport = MockJP1011Transport() if mock else None
+        self._tester_expires_at = 0.0
+        self._tester_events: deque[dict[str, Any]] = deque(maxlen=TESTER_EVENT_LIMIT)
+        self._update_event_listening()
         self._running = threading.Event()
 
     def status(self) -> dict[str, Any]:
+        self._refresh_tester_lease()
         return {
             "keepalive": self.keepalive.status(),
             "mock": self.mock_transport is not None,
             "binding_count": len(self.bindings),
+            "tester_active": self._tester_active(),
             "recent_actions": [result.__dict__ for result in self.executor.history[-10:]],
         }
 
@@ -66,8 +76,23 @@ class ServiceDaemon:
             return {"ok": True, "result": self.status()}
         if method == "set_bindings":
             self.bindings = [LinuxBinding.model_validate(item) for item in request.get("bindings", [])]
-            self.keepalive.set_event_listening(bool(self.bindings))
+            self._update_event_listening()
             return {"ok": True, "result": {"binding_count": len(self.bindings)}}
+        if method == "set_tester":
+            enabled = bool(request.get("enabled"))
+            self._tester_expires_at = time.monotonic() + TESTER_LEASE_SECONDS if enabled else 0.0
+            if not enabled:
+                self._tester_events.clear()
+            self._update_event_listening()
+            return {"ok": True, "result": self._tester_result()}
+        if method == "drain_tester_events":
+            self._refresh_tester_lease()
+            if self._tester_active():
+                self._tester_expires_at = time.monotonic() + TESTER_LEASE_SECONDS
+            self._update_event_listening()
+            events = list(self._tester_events)
+            self._tester_events.clear()
+            return {"ok": True, "result": self._tester_result(events)}
         if method == "execute_binding":
             result = self.executor.execute(LinuxBinding.model_validate(request["binding"]))
             return {"ok": result.ok, "result": result.__dict__}
@@ -86,6 +111,17 @@ class ServiceDaemon:
 
     def dispatch_vendor_event(self, raw: bytes) -> dict[str, Any]:
         event = parse_vendor_event(raw)
+        if self._tester_active():
+            self._tester_events.append(
+                {
+                    "timestamp": datetime.now(UTC).strftime("%H:%M:%S.%f")[:-3],
+                    "key_index": event.key_index if event is not None else None,
+                    "layer_index": event.layer_index if event is not None else None,
+                    "pressed": event.pressed if event is not None else None,
+                    "raw": raw[:16].hex(" "),
+                    "valid": event is not None,
+                }
+            )
         if event is None:
             return {"accepted": False, "reason": "invalid vendor event"}
         trigger = TriggerKind.PRESS if event.pressed else TriggerKind.RELEASE
@@ -100,6 +136,25 @@ class ServiceDaemon:
         results = [self.executor.execute(binding).__dict__ for binding in matched]
         return {"accepted": True, "key_index": event.key_index, "pressed": event.pressed, "executed": results}
 
+    def _tester_active(self) -> bool:
+        return time.monotonic() < self._tester_expires_at
+
+    def _refresh_tester_lease(self) -> None:
+        if not self._tester_active() and self._tester_expires_at:
+            self._tester_expires_at = 0.0
+            self._tester_events.clear()
+            self._update_event_listening()
+
+    def _update_event_listening(self) -> None:
+        self.keepalive.set_event_listening(bool(self.bindings) or self._tester_active())
+
+    def _tester_result(self, events: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        return {
+            "events": [] if events is None else events,
+            "tester_active": self._tester_active(),
+            "keepalive": self.keepalive.status(),
+        }
+
     def serve_forever(self) -> None:
         self.socket_path.parent.mkdir(parents=True, exist_ok=True)
         if self.socket_path.exists():
@@ -112,10 +167,13 @@ class ServiceDaemon:
         self._running.set()
         try:
             while self._running.is_set():
+                self._refresh_tester_lease()
                 if self.mock_transport is None:
                     self.keepalive.tick()
-                    raw_event = self.keepalive.read_event()
-                    if raw_event:
+                    for _ in range(MAX_EVENTS_PER_TICK):
+                        raw_event = self.keepalive.read_event()
+                        if not raw_event:
+                            break
                         self.dispatch_vendor_event(raw_event)
                 try:
                     connection, _ = server.accept()

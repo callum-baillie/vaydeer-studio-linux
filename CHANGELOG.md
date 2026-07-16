@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.4 - 2026-07-16
+
+- Connect the live key tester to the JP-1011 vendor-event service instead of
+  only generating mock events.
+- Enable event reads only while the tester has a renewable UI lease, retain a
+  bounded in-memory event queue, and expose unrecognized raw reports safely.
+
 ## 0.1.3 - 2026-07-16
 
 - Serialize complete JP-1011 command sessions, not only individual HID
