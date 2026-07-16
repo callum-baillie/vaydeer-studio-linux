@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.6 - 2026-07-16
+
+- Keep each JP-1011 key delegate in its assigned grid cell while animating the
+  inner keycap, fixing lower-row tester keys jumping into the top row.
+- Preserve a short visual pressed state when a physical press/release pair is
+  drained in one service poll, so every logged press is observable in the
+  tester.
+
 ## 0.1.5 - 2026-07-16
 
 - Rework the desktop workspace around a selectable JP-1011 physical keypad,

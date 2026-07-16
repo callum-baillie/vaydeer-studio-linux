@@ -77,21 +77,16 @@ Item {
                         required property var modelData
                         readonly property bool isPressed: keypad.pressedKeys.indexOf(modelData.index) !== -1
                         readonly property bool isSelected: keypad.selectedKey === modelData.index
+                        readonly property real pressDepth: Math.max(2, height * 0.07)
                         width: (keyGrid.width - keyGrid.spacing * (keyGrid.columns - 1)) / keyGrid.columns
                         height: (keyGrid.height - keyGrid.spacing * (keyGrid.rows - 1)) / keyGrid.rows
                         enabled: keypad.interactive
                         hoverEnabled: keypad.interactive
                         focusPolicy: Qt.StrongFocus
-                        y: isPressed ? Math.max(2, height * 0.07) : 0
-                        scale: isPressed ? 0.91 : hovered ? 1.015 : 1.0
-                        z: isPressed ? 0 : 1
                         Accessible.name: "Physical key " + (modelData.index + 1) + ", " + modelData.label
                         Accessible.description: modelData.physicalLabel
                         ToolTip.visible: hovered
                         ToolTip.text: modelData.physicalLabel + "\n" + modelData.label
-
-                        Behavior on y { NumberAnimation { duration: 70; easing.type: Easing.OutCubic } }
-                        Behavior on scale { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
 
                         onClicked: {
                             keypad.keySelected(modelData.index)
@@ -99,45 +94,66 @@ Item {
                                 keypad.keyActivated(modelData.index)
                         }
 
-                        background: Rectangle {
-                            radius: Math.max(4, parent.width * 0.11)
-                            color: physicalKey.isPressed ? Qt.darker(keypad.panelColor, 1.18) : keypad.panelColor
-                            border.width: physicalKey.isSelected ? 2 : 1
-                            border.color: physicalKey.isSelected ? keypad.accent : Qt.lighter(keypad.panelColor, 1.55)
+                        background: Item {
                             Rectangle {
-                                anchors.fill: parent
-                                anchors.margins: 3
-                                radius: Math.max(3, parent.radius - 2)
-                                visible: !physicalKey.isPressed
-                                color: "transparent"
+                                x: 0
+                                y: physicalKey.pressDepth
+                                width: parent.width
+                                height: parent.height - physicalKey.pressDepth
+                                radius: Math.max(4, parent.width * 0.11)
+                                color: Qt.darker(keypad.panelColor, 1.4)
+                            }
+                            Rectangle {
+                                id: keyCap
+                                x: 0
+                                y: physicalKey.isPressed ? physicalKey.pressDepth : 0
+                                width: parent.width
+                                height: parent.height - physicalKey.pressDepth
+                                radius: Math.max(4, parent.width * 0.11)
+                                color: physicalKey.isPressed ? Qt.darker(keypad.panelColor, 1.18) : keypad.panelColor
                                 border.width: 1
-                                border.color: Qt.lighter(keypad.panelColor, 1.28)
+                                border.color: physicalKey.isSelected ? keypad.accent : Qt.lighter(keypad.panelColor, 1.55)
+                                Behavior on y { NumberAnimation { duration: 65; easing.type: Easing.OutCubic } }
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 3
+                                    radius: Math.max(3, parent.radius - 2)
+                                    visible: !physicalKey.isPressed
+                                    color: "transparent"
+                                    border.width: physicalKey.isSelected ? 1 : 0
+                                    border.color: Qt.lighter(keypad.panelColor, 1.28)
+                                }
                             }
                         }
 
-                        contentItem: Column {
-                            anchors.fill: parent
-                            anchors.margins: Math.max(4, parent.width * 0.09)
-                            spacing: 1
-                            Label {
-                                width: parent.width
-                                text: "K" + (physicalKey.modelData.index + 1)
-                                color: keypad.muted
-                                font.pixelSize: Math.max(8, physicalKey.width * 0.14)
-                                horizontalAlignment: Text.AlignHCenter
-                                elide: Text.ElideRight
-                            }
-                            Label {
-                                width: parent.width
-                                text: physicalKey.modelData.label
-                                color: keypad.ink
-                                font.pixelSize: Math.max(9, physicalKey.width * 0.17)
-                                font.bold: true
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                maximumLineCount: 2
-                                wrapMode: Text.Wrap
-                                elide: Text.ElideRight
+                        contentItem: Item {
+                            Column {
+                                id: keyLegend
+                                x: Math.max(4, parent.width * 0.09)
+                                y: Math.max(4, parent.width * 0.09) + (physicalKey.isPressed ? physicalKey.pressDepth : 0)
+                                width: parent.width - 2 * x
+                                spacing: 1
+                                Behavior on y { NumberAnimation { duration: 65; easing.type: Easing.OutCubic } }
+                                Label {
+                                    width: parent.width
+                                    text: "K" + (physicalKey.modelData.index + 1)
+                                    color: keypad.muted
+                                    font.pixelSize: Math.max(8, physicalKey.width * 0.14)
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
+                                }
+                                Label {
+                                    width: parent.width
+                                    text: physicalKey.modelData.label
+                                    color: keypad.ink
+                                    font.pixelSize: Math.max(9, physicalKey.width * 0.17)
+                                    font.bold: true
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    maximumLineCount: 2
+                                    wrapMode: Text.Wrap
+                                    elide: Text.ElideRight
+                                }
                             }
                         }
                     }

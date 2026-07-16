@@ -26,6 +26,7 @@ def main() -> int:
     parser.add_argument("--page", type=int, default=0, choices=range(6))
     parser.add_argument("--output", type=Path, default=Path("screenshots/mock-jp1011.png"))
     parser.add_argument("--live", action="store_true", help="Render the connected keypad without writing to it")
+    parser.add_argument("--press-key", type=int, choices=range(9), help="Capture a mock tester key while pressed")
     args = parser.parse_args()
     target = args.output
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -48,7 +49,10 @@ def main() -> int:
             return
         application.quit()
 
-    QTimer.singleShot(1_500, capture)
+    capture_delay_ms = 1_500
+    if args.press_key is not None:
+        QTimer.singleShot(capture_delay_ms - 75, lambda: controller.simulateKey(args.press_key))
+    QTimer.singleShot(capture_delay_ms, capture)
     return application.exec()
 
 

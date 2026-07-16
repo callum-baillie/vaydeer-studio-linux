@@ -142,6 +142,47 @@ def test_controller_layer_controls_and_tester_pressed_state() -> None:
     assert controller.testerPressedKeys == []
 
 
+def test_batched_tester_release_keeps_a_visual_press_until_the_timer_runs(monkeypatch) -> None:
+    callbacks: list[tuple[int, object]] = []
+
+    class FakeGuiApplication:
+        @staticmethod
+        def instance() -> object:
+            return object()
+
+    class FakeTimer:
+        @staticmethod
+        def singleShot(delay: int, callback: object) -> None:
+            callbacks.append((delay, callback))
+
+    monkeypatch.setattr(controller_module, "QGuiApplication", FakeGuiApplication)
+    monkeypatch.setattr(controller_module, "QTimer", FakeTimer)
+    controller = StudioController(mock=True)
+    controller.setTesterOpen(True)
+
+    controller._append_tester_event(
+        key_index=6,
+        layer_index=0,
+        pressed=True,
+        timestamp="12:00:00.000",
+        raw="fb 03 00 06 00 fe",
+    )
+    controller._append_tester_event(
+        key_index=6,
+        layer_index=0,
+        pressed=False,
+        timestamp="12:00:00.001",
+        raw="fb 03 00 06 02 fc",
+    )
+
+    assert controller.testerPressedKeys == [6]
+    assert callbacks and callbacks[0][0] > 0
+    callback = callbacks[0][1]
+    assert callable(callback)
+    callback()
+    assert controller.testerPressedKeys == []
+
+
 def test_controller_reports_and_installs_host_local_user_service(monkeypatch, tmp_path) -> None:
     def fake_run(command, **_kwargs):
         if "show" in command:

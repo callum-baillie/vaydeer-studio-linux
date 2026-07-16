@@ -13,6 +13,7 @@ import sys
 from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from platformdirs import user_data_path
@@ -51,6 +52,7 @@ LOGGER = logging.getLogger(__name__)
 _STARTUP_RETRY_DELAYS_MS = (250, 500, 1_000, 1_500, 2_000)
 _CONNECTION_HEALTH_INTERVAL_MS = 1_500
 _TESTER_POLL_INTERVAL_MS = 150
+_TESTER_MINIMUM_PRESS_MS = 150
 _SERVICE_UNIT = "vaydeer-studio.service"
 
 _QT_KEY_F1 = int(Qt.Key.Key_F1)
@@ -156,6 +158,8 @@ class StudioController(QObject):
         self._tester_open = False
         self._tester_events: list[dict[str, str | int]] = []
         self._tester_pressed_keys: set[int] = set()
+        self._tester_press_started: dict[int, float] = {}
+        self._tester_press_generations: dict[int, int] = {}
         self._tester_status = "Open the tester to begin listening for vendor events."
         self._captured_key_value = ""
         self._macro_recording = False
@@ -1196,6 +1200,8 @@ class StudioController(QObject):
         if not opened:
             self._tester_events = []
             self._tester_pressed_keys.clear()
+            self._tester_press_started.clear()
+            self._tester_press_generations.clear()
         self.testerChanged.emit()
 
     def _set_service_tester(self, enabled: bool) -> None:
@@ -1285,8 +1291,10 @@ class StudioController(QObject):
         if key_index is not None:
             if pressed is True:
                 self._tester_pressed_keys.add(key_index)
+                self._tester_press_started[key_index] = monotonic()
+                self._tester_press_generations[key_index] = self._tester_press_generations.get(key_index, 0) + 1
             elif pressed is False:
-                self._tester_pressed_keys.discard(key_index)
+                self._release_tester_key(key_index)
         self._tester_events.insert(
             0,
             {
@@ -1298,6 +1306,29 @@ class StudioController(QObject):
             },
         )
         self._tester_events = self._tester_events[:30]
+
+    def _release_tester_key(self, key_index: int) -> None:
+        """Keep batched physical press/release reports visible for one render frame."""
+
+        if key_index not in self._tester_pressed_keys:
+            return
+        started = self._tester_press_started.get(key_index, monotonic())
+        remaining_ms = _TESTER_MINIMUM_PRESS_MS - int((monotonic() - started) * 1_000)
+        generation = self._tester_press_generations.get(key_index, 0)
+        if remaining_ms <= 0 or QGuiApplication.instance() is None:
+            self._finish_tester_release(key_index, generation)
+            return
+        QTimer.singleShot(
+            remaining_ms,
+            lambda: self._finish_tester_release(key_index, generation),
+        )
+
+    def _finish_tester_release(self, key_index: int, generation: int) -> None:
+        if self._tester_press_generations.get(key_index) != generation:
+            return
+        self._tester_pressed_keys.discard(key_index)
+        self._tester_press_started.pop(key_index, None)
+        self.testerChanged.emit()
 
     @Slot()
     def exportDiagnostics(self) -> None:
