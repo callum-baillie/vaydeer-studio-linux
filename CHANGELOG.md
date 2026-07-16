@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.13 - 2026-07-16
+
+- Add in-app scope explainers to On-device mappings, Profiles, and Live key
+  tester. Each screen now distinguishes persistent keypad configuration from
+  host-only `vaydeer-studiod` behavior.
+- Add a Help page at the bottom of the sidebar with a concise first-run flow,
+  an explanation of the lightweight background service, and instructions for
+  every workspace.
+
 ## 0.1.12 - 2026-07-16
 
 - Allow a compatible, connected keypad to be written directly from the desktop

@@ -22,7 +22,8 @@ ApplicationWindow {
     property color panel: darkMode ? "#172129" : "#FFFFFF"
     property color panelRaised: darkMode ? "#202D36" : "#EEF3F5"
     property color line: darkMode ? "#33414C" : "#D8E0E6"
-    property var pagesModel: ["Devices", "On-device mappings", "Linux bindings", "Profiles", "Live key tester", "Diagnostics"]
+    property var primaryPagesModel: ["Devices", "On-device mappings", "Linux bindings", "Profiles", "Live key tester", "Diagnostics"]
+    property int helpPageIndex: 6
 
     function layerIndexForSelected() {
         for (let index = 0; index < vaydeerBridge.layers.length; index++) {
@@ -118,6 +119,76 @@ ApplicationWindow {
             color: parent.statusColor
             font.pixelSize: 11
             font.bold: true
+        }
+    }
+
+    component ScopeExplainer: Rectangle {
+        id: scopeExplainer
+        property string deviceText: ""
+        property string hostText: ""
+        property string note: ""
+        Layout.fillWidth: true
+        implicitHeight: scopeContent.implicitHeight + 28
+        color: window.darkMode ? "#14292C" : "#E7F3F1"
+        radius: 6
+        border.width: 1
+        border.color: window.darkMode ? "#2C5A59" : "#B8DCD6"
+
+        ColumnLayout {
+            id: scopeContent
+            anchors.fill: parent
+            anchors.margins: 14
+            spacing: 8
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    text: "Where this works"
+                    color: window.ink
+                    font.bold: true
+                    font.pixelSize: 13
+                }
+                Label {
+                    visible: scopeExplainer.note.length > 0
+                    text: scopeExplainer.note
+                    color: window.muted
+                    font.pixelSize: 11
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 14
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Label { text: "On the macro keypad"; color: window.accent; font.bold: true; font.pixelSize: 12 }
+                    Label {
+                        text: scopeExplainer.deviceText
+                        color: window.ink
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 12
+                        Layout.fillWidth: true
+                    }
+                }
+                Rectangle {
+                    Layout.preferredWidth: 1
+                    Layout.preferredHeight: 50
+                    color: window.line
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Label { text: "On this host"; color: window.amber; font.bold: true; font.pixelSize: 12 }
+                    Label {
+                        text: scopeExplainer.hostText
+                        color: window.ink
+                        wrapMode: Text.WordWrap
+                        font.pixelSize: 12
+                        Layout.fillWidth: true
+                    }
+                }
+            }
         }
     }
 
@@ -355,7 +426,7 @@ ApplicationWindow {
                     anchors.margins: 12
                     spacing: 5
                     Repeater {
-                        model: window.pagesModel
+                        model: window.primaryPagesModel
                         delegate: Button {
                             required property string modelData
                             required property int index
@@ -385,6 +456,31 @@ ApplicationWindow {
                         }
                     }
                     Item { Layout.fillHeight: true }
+                    Button {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 40
+                        text: "Help"
+                        checkable: true
+                        checked: window.navIndex === window.helpPageIndex
+                        Accessible.name: "Help"
+                        onClicked: {
+                            window.navIndex = window.helpPageIndex
+                            vaydeerBridge.setActivePage(window.helpPageIndex)
+                        }
+                        contentItem: Label {
+                            text: parent.text
+                            color: parent.checked ? window.ink : window.muted
+                            verticalAlignment: Text.AlignVCenter
+                            leftPadding: 12
+                            font.bold: parent.checked
+                        }
+                        background: Rectangle {
+                            radius: 5
+                            color: parent.checked ? (window.darkMode ? "#203A3B" : "#D9EEEA") : "transparent"
+                            border.color: parent.checked ? window.accent : "transparent"
+                            border.width: parent.checked ? 1 : 0
+                        }
+                    }
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 72
@@ -569,6 +665,11 @@ ApplicationWindow {
                                     label: vaydeerBridge.dirty ? vaydeerBridge.pendingMappingCount + " pending" : "Matches device"
                                     statusColor: vaydeerBridge.dirty ? window.amber : window.accent
                                 }
+                            }
+                            ScopeExplainer {
+                                deviceText: "Supported keys, layers, and layer names are saved to the keypad after you review the diff and confirm the write. They work on any computer without Vaydeer Studio."
+                                hostText: "vaydeer-studiod is not needed for these stored mappings. App launches, files, URLs, text, and commands belong in Linux bindings and run only on this host."
+                                note: "Pending changes stay in the draft until you apply them."
                             }
                             Rectangle {
                                 Layout.fillWidth: true
@@ -1132,6 +1233,11 @@ ApplicationWindow {
                                 StatusPill { label: vaydeerBridge.dirty ? vaydeerBridge.pendingMappingCount + " mapping changes" : "Matches device"; statusColor: vaydeerBridge.dirty ? window.amber : window.accent }
                                 StatusPill { label: vaydeerBridge.profileDirty ? "Local save needed" : "Saved locally"; statusColor: vaydeerBridge.profileDirty ? window.amber : window.accent }
                             }
+                            ScopeExplainer {
+                                deviceText: "A profile can contain keypad mappings and layers, but saving a profile does not write it to the keypad. Applying its on-device changes remains a separate confirmed action."
+                                hostText: "Profiles can also carry Linux bindings for vaydeer-studiod. Linux profiles load those bindings on this host; macOS and Windows profiles remain portable configuration files."
+                                note: "Profiles are local, portable drafts until you choose where to apply them."
+                            }
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 218
@@ -1319,11 +1425,20 @@ ApplicationWindow {
 
                 // Live key tester
                 Item {
-                    RowLayout {
+                    ColumnLayout {
                         anchors.fill: parent
                         anchors.margins: 24
                         spacing: 14
-                        Rectangle {
+                        ScopeExplainer {
+                            deviceText: "The keypad sends its normal keyboard reports and a vendor physical-key event. The tester only observes those reports; it does not store or change any mapping."
+                            hostText: "vaydeer-studiod keeps the vendor event interface open for Linux activation. Studio asks it to forward events only while this tester is open; existing Linux bindings need the daemon, not the Studio window."
+                            note: "Close this page when you no longer need event visibility."
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            spacing: 14
+                            Rectangle {
                             Layout.preferredWidth: Math.max(335, parent.width * 0.34)
                             Layout.fillHeight: true
                             color: window.panel
@@ -1361,7 +1476,7 @@ ApplicationWindow {
                                 Label { text: "Vendor reports: fb 03 layer key state xor"; color: window.muted; font.pixelSize: 11; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter }
                             }
                         }
-                        Rectangle {
+                            Rectangle {
                             Layout.fillWidth: true
                             Layout.fillHeight: true
                             color: window.panel
@@ -1401,6 +1516,7 @@ ApplicationWindow {
                                     }
                                     footer: Label { visible: vaydeerBridge.testerEvents.length === 0; text: "No key events yet."; color: window.muted; padding: 10 }
                                 }
+                            }
                             }
                         }
                     }
@@ -1449,6 +1565,109 @@ ApplicationWindow {
                             radius: 6
                             border.color: window.line
                             Label { anchors.fill: parent; anchors.margins: 16; text: vaydeerBridge.diagnosticSummary; color: window.muted; wrapMode: Text.WordWrap; verticalAlignment: Text.AlignTop; font.family: "monospace" }
+                        }
+                    }
+                }
+
+                // Help
+                Item {
+                    ScrollView {
+                        anchors.fill: parent
+                        contentWidth: availableWidth
+                        clip: true
+                        ColumnLayout {
+                            width: Math.max(0, parent.width - 48)
+                            x: 24
+                            y: 20
+                            spacing: 14
+                            RowLayout {
+                                Layout.fillWidth: true
+                                SectionTitle { text: "Help"; hint: "A short guide to the device, the local service, and each workspace." }
+                            }
+                            ScopeExplainer {
+                                deviceText: "The keypad stores supported keyboard-style mappings, its layers, and layer names. Those assignments keep working when it is connected to another computer."
+                                hostText: "vaydeer-studiod is the small local background service. It maintains Linux activation and runs Linux bindings after Studio is closed. The full Studio app is only needed to configure and inspect the keypad."
+                                note: "The service is installed and managed from Devices."
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                implicitHeight: quickStart.implicitHeight + 28
+                                color: window.panel
+                                radius: 6
+                                border.color: window.line
+                                ColumnLayout {
+                                    id: quickStart
+                                    anchors.fill: parent
+                                    anchors.margins: 14
+                                    spacing: 8
+                                    Label { text: "Start here"; color: window.ink; font.pixelSize: 16; font.bold: true }
+                                    Label {
+                                        text: "1. Open Devices and confirm the keypad and local service are ready.  2. Read the keypad on On-device mappings.  3. Edit a key, review the diff, and apply only when ready.  4. Save or export the profile when you want to keep the draft."
+                                        color: window.muted
+                                        wrapMode: Text.WordWrap
+                                        Layout.fillWidth: true
+                                    }
+                                }
+                            }
+                            GridLayout {
+                                id: helpGrid
+                                Layout.fillWidth: true
+                                columns: 2
+                                rowSpacing: 12
+                                columnSpacing: 12
+                                Repeater {
+                                    model: [
+                                        {
+                                            "title": "Devices",
+                                            "body": "Check connection, permissions, interface discovery, and the local service. Install or enable vaydeer-studiod here so Linux activation and Linux bindings continue after Studio closes."
+                                        },
+                                        {
+                                            "title": "On-device mappings",
+                                            "body": "Select a layer and physical key, choose a supported keyboard-style action, then save it to the draft. Review changes before applying; a backup and read-back verification are always used."
+                                        },
+                                        {
+                                            "title": "Linux bindings",
+                                            "body": "Create host-only actions such as launching an app, opening a URL, or running a command. These run only on Linux while vaydeer-studiod is running; they are not written to the keypad."
+                                        },
+                                        {
+                                            "title": "Profiles",
+                                            "body": "Use profiles to save, duplicate, import, export, and organize mapping drafts and Linux bindings. A profile can target Linux, macOS, or Windows; only Linux bindings run on this host."
+                                        },
+                                        {
+                                            "title": "Live key tester",
+                                            "body": "Open this page to see physical press and release reports from the vendor event interface. It is useful for diagnosis and key selection, and does not record keys after you leave the page."
+                                        },
+                                        {
+                                            "title": "Diagnostics",
+                                            "body": "Refresh the hardware and service checks when something is not working. Copy or export the sanitized diagnostic summary when reporting an issue."
+                                        }
+                                    ]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        Layout.preferredWidth: (helpGrid.width - helpGrid.columnSpacing) / 2
+                                        Layout.fillWidth: true
+                                        implicitHeight: helpCardContent.implicitHeight + 26
+                                        color: window.panel
+                                        radius: 6
+                                        border.color: window.line
+                                        ColumnLayout {
+                                            id: helpCardContent
+                                            anchors.fill: parent
+                                            anchors.margins: 13
+                                            spacing: 5
+                                            Label { text: modelData.title; color: window.ink; font.bold: true; font.pixelSize: 14 }
+                                            Label { text: modelData.body; color: window.muted; wrapMode: Text.WordWrap; Layout.fillWidth: true; font.pixelSize: 12 }
+                                        }
+                                    }
+                                }
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: "Safety: Studio never flashes firmware or offers raw packet sending. A keypad write always requires a reviewed diff, a timestamped backup, and a typed confirmation."
+                                color: window.muted
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 12
+                            }
                         }
                     }
                 }

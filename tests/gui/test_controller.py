@@ -71,6 +71,22 @@ def test_mock_tester_reports_one_based_layer_numbers() -> None:
     assert all(event["layer"] == 1 for event in controller.testerEvents)
 
 
+def test_help_page_closes_key_event_listener_modes() -> None:
+    controller = StudioController(mock=True)
+
+    controller.setActivePage(4)
+    assert controller._tester_open is True
+    assert controller._mapping_key_selection_active is False
+
+    controller.setActivePage(1)
+    assert controller._tester_open is False
+    assert controller._mapping_key_selection_active is True
+
+    controller.setActivePage(6)
+    assert controller._tester_open is False
+    assert controller._mapping_key_selection_active is False
+
+
 def test_controller_edits_profile_and_generates_diff() -> None:
     controller = StudioController(mock=True)
     controller.selectKey(0)
