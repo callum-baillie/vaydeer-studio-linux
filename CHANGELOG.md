@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.1.14 - 2026-07-16
+
+- Polish the desktop shell with a fixed application bar, restrained design
+  tokens, compact device/service status, clearer navigation, persistent theme,
+  and persistent Basic/Advanced mode.
+- Add Overview and Setup workflows that distinguish Studio, keypad memory, and
+  the lightweight Background service without low-level terminology in Basic
+  mode.
+- Rename and simplify the core screens: On-device keys uses a reviewed
+  read-edit-review-write flow; Linux actions clearly remain local and
+  service-dependent; Profiles group on-device and Linux-only content.
+- Improve Live tester and Diagnostics with actionable empty states, concise
+  event data, pause/clear/copy/export controls, and plain-language health
+  summaries. Raw HID details now appear only in Advanced mode.
+- Add headless QML shell coverage for navigation, Basic/Advanced mode, and the
+  fixed header, plus tester session export/clear coverage and refreshed UI
+  documentation and screenshots.
+
 ## 0.1.13 - 2026-07-16
 
 - Add in-app scope explainers to On-device mappings, Profiles, and Live key

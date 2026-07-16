@@ -27,6 +27,12 @@ read-only event interface, normal-user access, the service socket, and a safe
 `0x60` device-information read. It never sends configuration or firmware
 commands. A healthy result has `"root_cause": "ready"` and `"ready": true`.
 
+On first launch, use **Overview** to see the keypad and Background service
+state. Open **Setup** for a short checklist when the service, permission rule,
+or connection needs attention. Basic mode uses plain-language labels; the
+technical service name `vaydeer-studiod` remains available in Advanced mode and
+in diagnostics.
+
 For a no-hardware demo, run `uv run vaydeer-studio --mock jp1011`.
 
 ## Permissions

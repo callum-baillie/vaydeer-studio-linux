@@ -22,13 +22,14 @@ transactions are serialized on the selected HID node.
 
 ## Live key tester shows no events
 
-Open **Live key tester**, wait for the message that it is listening, then press
-a physical keypad key. Opening this screen enables read-only event consumption
-through `vaydeer-studiod`; it does not open or write the command interface.
-The service must show `active_readonly` in `vaydeer-studio-cli service-status`.
+Open **Live tester**, wait for the message that it is listening, then press a
+physical keypad key. Opening this screen enables read-only event consumption
+through the Background service; it does not open or write the command
+interface. Use **Pause** and **Start listening** to control capture. The
+service must show `active_readonly` in `vaydeer-studio-cli service-status`.
 
-If an `Unknown` event appears, export diagnostics and include the displayed raw
-six-byte event prefix in a report. If the service changes to
+If an `Unknown` event appears, switch to Advanced mode, export diagnostics, and
+include the displayed raw six-byte event prefix in a report. If the service changes to
 `waiting_for_device`, Linux briefly lost the keypad interface: wait for it to
 recover, check the USB cable or port, and do not use a firmware updater.
 
@@ -61,9 +62,10 @@ This is expected for unknown firmware versions and unsupported models. Export
 the profile and diagnostics, then open an issue with sanitized report data. Do
 not use a firmware updater to make the app writable.
 
-## Service does not start
+## Background service does not start
 
-Run `systemctl --user daemon-reload`, then inspect
+Open **Setup** and choose **Start Background service** when it is installed but
+stopped. Otherwise run `systemctl --user daemon-reload`, then inspect
 `journalctl --user -u vaydeer-studio.service`. The service should be installed
 as the same user who launches the desktop session.
 

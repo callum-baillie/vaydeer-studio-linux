@@ -7,7 +7,13 @@ application separates portable onboard mappings from Linux-side actions,
 creates a backup before every eligible write, previews the diff, and verifies a
 write by reading it back.
 
-![Mock JP-1011 mapping editor](screenshots/mock-mappings.png)
+## Screenshots
+
+![Vaydeer Studio overview in the dark theme](screenshots/ui-overview-dark.png)
+
+![On-device key editor in the dark theme](screenshots/ui-on-device-keys-dark.png)
+
+![Linux actions in the dark theme](screenshots/ui-linux-actions-dark.png)
 
 ## Why this exists
 
@@ -16,6 +22,20 @@ HID interface is held open. Opening the correct interface read-only is enough;
 no vendor command, write, or read loop is required. Vaydeer Studio discovers
 that interface dynamically rather than relying on a `/dev/hidrawN` number, and
 keeps it open through a small user service.
+
+## How it works
+
+**Vaydeer Studio** is the desktop app used to inspect the keypad, edit drafts,
+and manage profiles. It can be closed after configuration.
+
+**On-device keys** are written to keypad memory. Supported keyboard, media,
+system, layer, and layer-name mappings work on a compatible computer without
+Studio or Linux installed.
+
+**Linux actions** stay on this Linux computer. The lightweight **Background
+service** (`vaydeer-studiod`) keeps the JP-1011 active on Linux and executes
+actions such as launching applications or opening URLs after Studio is closed.
+They never modify keypad memory.
 
 ## Features
 
@@ -139,33 +159,41 @@ entries, and a user unit. `make run` is a mock-mode shortcut.
 
 ## First run
 
-1. Connect the keypad and open **Devices**. The local Vaydeer service panel
-   identifies the host running the app and reports whether `vaydeer-studiod` is
-   installed, running, reachable, and enabled at login.
-2. Select **Install user service** there when the user unit is absent. This
-   writes and enables only the per-user service; it never invokes `sudo`.
-   Install the scoped udev rule with `./scripts/install.sh` when permissions
-   are not yet granted, then reconnect the keypad.
-3. Confirm model, firmware, permissions, and keepalive.
-4. Read mappings, select a layer/key, and edit a portable profile. A device
-   refresh replaces the workspace only when no mappings are pending; otherwise
-   it refreshes the baseline and preserves the draft for comparison.
-5. Use **Preview apply** to create a backup and inspect the diff.
-6. For real hardware, run the displayed CLI command and type `APPLY` in the
-   terminal after reviewing its backup path, mapping, diff, and packet list.
+1. Open **Overview**. It shows the keypad and Background service state, then
+   points to either keypad-memory configuration or Linux-only actions.
+2. Open **Setup** when permissions or the service need attention. It safely
+   verifies each prerequisite and can install or start the user service. Use
+   `./scripts/install.sh` to install the scoped udev rule, then reconnect the
+   keypad.
+3. Open **On-device keys**, choose a layer and physical key, then use **Read
+   from keypad** from the action menu before editing a draft.
+4. Select **Review changes** and then **Write to keypad**. The dialog shows the
+   backup location and affected keys; a real write requires typing `APPLY` in
+   the application and is read back for verification.
+5. Use **Linux actions** for work that only runs on this computer. Save those
+   actions to a Linux profile; they run while the Background service is ready.
+6. Save or export the profile from **Profiles**. Selecting a profile does not
+   write it to the keypad automatically.
 
 Every backup is versioned JSON under the XDG data directory, normally
 `~/.local/share/Vaydeer Studio/backups`. Restore first stages that backup for
 the same review flow.
 
-## Linux-side bindings
+## Linux actions
 
-Linux bindings deliberately live outside the keypad firmware. Select a physical
-key and layer, create or edit a binding in the **Linux bindings** screen, save
-the profile, and let the user service handle the vendor event. Commands use an
-executable plus argument array by default; shell execution requires an explicit
-opt-in. The service currently executes `press` and `release` triggers. These
-actions need Linux and the running service, unlike stable onboard mappings.
+Linux actions deliberately live outside keypad firmware. Select a physical key
+and layer, create an action in **Linux actions**, then save it to the profile.
+The Background service handles the vendor event. Commands use an executable
+plus argument array by default; shell execution requires an explicit opt-in in
+Advanced mode. The service currently executes `press` and `release` triggers.
+These actions need Linux and the running service, unlike stable on-device keys.
+
+## Basic and Advanced modes
+
+Basic mode is the default and contains the normal configuration workflow.
+Advanced mode exposes raw reports, documented values, capability notes, and
+shell options without changing stored data. The selected mode, theme, and last
+page are retained between launches.
 
 ## Application presets and portable profiles
 
