@@ -22,8 +22,9 @@ update-mime-database "$HOME/.local/share/mime" 2>/dev/null || true
 systemctl --user daemon-reload
 sudo install -Dm0644 packaging/udev/99-vaydeer-studio.rules /etc/udev/rules.d/99-vaydeer-studio.rules
 sudo udevadm control --reload-rules
-sudo udevadm trigger --subsystem-match=hidraw
+systemctl --user enable --now vaydeer-studio.service
 
-echo "Installed Vaydeer Studio. Reconnect the keypad, then run:"
-echo "  systemctl --user enable --now vaydeer-studio.service"
-echo "  vaydeer-studio --mock jp1011"
+echo "Installed Vaydeer Studio and started the user keepalive service."
+echo "Reconnect the keypad so the udev rule is applied to its current hidraw nodes, then run:"
+echo "  vaydeer-studio-cli doctor"
+echo "  vaydeer-studio"

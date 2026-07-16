@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 from collections import defaultdict
@@ -17,6 +18,8 @@ VAYDEER_PID = 0x5752
 VENDOR_USAGE_PAGE = 0xFF00
 COMMAND_USAGE = 0x0001
 EVENT_USAGE = 0x0002
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -89,11 +92,22 @@ def discover_linux_hidraw(
             device = (entry / "device").resolve()
             identity = _hid_identity((device / "uevent").read_text(encoding="utf-8", errors="replace"))
             descriptor = (device / "report_descriptor").read_bytes()
-        except OSError:
+        except OSError as error:
+            LOGGER.debug("HID candidate rejected: node=%s reason=sysfs_unreadable error=%s", entry.name, error)
             continue
         if identity is None:
+            LOGGER.debug("HID candidate rejected: node=%s reason=missing_hid_identity", entry.name)
             continue
         page, usage = _parse_usage(descriptor)
+        LOGGER.debug(
+            "HID candidate discovered: node=%s vid=%04x pid=%04x interface=%s usage=%s/%s",
+            entry.name,
+            identity[0],
+            identity[1],
+            _interface_number(device),
+            f"{page:#06x}" if page is not None else "missing",
+            f"{usage:#06x}" if usage is not None else "missing",
+        )
         discovered.append(
             HidInterface(
                 path=str(dev_root / entry.name),
@@ -111,28 +125,14 @@ def discover_linux_hidraw(
 def select_keepalive_interface(interfaces: Iterable[HidInterface]) -> HidInterface | None:
     """Return only JP-1011 interface 2 with the matching vendor collection."""
 
-    matches = [
-        interface
-        for interface in interfaces
-        if interface.is_vaydeer
-        and interface.interface_number == 2
-        and interface.usage_page == VENDOR_USAGE_PAGE
-        and interface.usage == EVENT_USAGE
-    ]
+    matches = _select_interfaces(interfaces, interface_number=2, usage=EVENT_USAGE, role="keepalive")
     if len(matches) > 1:
         raise DeviceError("Multiple JP-1011 vendor event interfaces matched; refusing to guess")
     return matches[0] if matches else None
 
 
 def select_command_interface(interfaces: Iterable[HidInterface]) -> HidInterface | None:
-    matches = [
-        interface
-        for interface in interfaces
-        if interface.is_vaydeer
-        and interface.interface_number == 0
-        and interface.usage_page == VENDOR_USAGE_PAGE
-        and interface.usage == COMMAND_USAGE
-    ]
+    matches = _select_interfaces(interfaces, interface_number=0, usage=COMMAND_USAGE, role="command")
     if len(matches) > 1:
         raise DeviceError("Multiple Vaydeer command interfaces matched; refusing to guess")
     return matches[0] if matches else None
@@ -195,3 +195,24 @@ def open_readonly_cloexec(path: str) -> int:
     """Open a dynamically discovered hidraw node without reading or writing it."""
 
     return os.open(path, os.O_RDONLY | os.O_CLOEXEC)
+
+
+def _select_interfaces(
+    interfaces: Iterable[HidInterface], *, interface_number: int, usage: int, role: str
+) -> list[HidInterface]:
+    matches: list[HidInterface] = []
+    for interface in interfaces:
+        if not interface.is_vaydeer:
+            continue
+        reason: str | None = None
+        if interface.interface_number != interface_number:
+            reason = f"interface_number={interface.interface_number!r}"
+        elif interface.usage_page != VENDOR_USAGE_PAGE:
+            reason = f"usage_page={interface.usage_page!r}"
+        elif interface.usage != usage:
+            reason = f"usage={interface.usage!r}"
+        if reason is not None:
+            LOGGER.debug("HID candidate rejected: node=%s role=%s reason=%s", interface.path, role, reason)
+            continue
+        matches.append(interface)
+    return matches

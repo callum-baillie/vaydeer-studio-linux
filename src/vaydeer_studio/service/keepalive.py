@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import errno
+import logging
 import os
 import select
 import threading
@@ -18,6 +19,8 @@ from vaydeer_studio.devices.discovery import (
     open_readonly_cloexec,
     select_keepalive_interface,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class KeepaliveState(StrEnum):
@@ -158,4 +161,6 @@ class KeepaliveManager:
         self._node = None
 
     def _set_status(self, state: KeepaliveState, node: str | None, message: str) -> None:
+        if (state, node, message) != (self._status.state, self._status.node, self._status.message):
+            LOGGER.info("Keepalive state=%s node=%s message=%s", state, node or "none", message)
         self._status = KeepaliveStatus(state, node, message, self._event_listening)
