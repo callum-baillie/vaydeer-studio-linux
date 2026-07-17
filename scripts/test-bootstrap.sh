@@ -63,4 +63,30 @@ grep -F "System packages: skipped (--no-deps)" <<<"$unknown_no_deps" >/dev/null
 grep -F "Device permission rule: skip" <<<"$unknown_no_deps" >/dev/null
 grep -F "Background service: skip" <<<"$unknown_no_deps" >/dev/null
 
+# Exercise the no-dependency path without network access. Reaching the fake
+# downloader proves the skipped package step returned success under `set -e`.
+mkdir -p "$test_root/fake-bin" "$test_root/home"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'printf reached >"$VAYDEER_TEST_DOWNLOAD_MARKER"' \
+  'exit 42' >"$test_root/fake-bin/curl"
+chmod +x "$test_root/fake-bin/curl"
+set +e
+PATH="$test_root/fake-bin:/usr/bin:/bin" \
+HOME="$test_root/home" \
+VAYDEER_OS_RELEASE="$test_root/ubuntu" \
+VAYDEER_TEST_DOWNLOAD_MARKER="$test_root/download-marker" \
+  "$root/scripts/bootstrap.sh" --yes --no-deps --no-udev --no-service \
+  >"$test_root/no-deps-output" 2>&1
+no_deps_status=$?
+set -e
+[[ "$no_deps_status" -eq 1 ]] || {
+  cat "$test_root/no-deps-output" >&2
+  printf 'Expected controlled download failure status 1, got %s.\n' "$no_deps_status" >&2
+  exit 1
+}
+grep -F "Downloading pinned uv" "$test_root/no-deps-output" >/dev/null
+grep -F "Error: Download failed:" "$test_root/no-deps-output" >/dev/null
+grep -F "reached" "$test_root/download-marker" >/dev/null
+
 echo "Bootstrap distribution plan tests passed."

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2 - 2026-07-16
+
+- Fix `--no-deps` exiting immediately after the installation plan under strict
+  shell error handling.
+- Add an execution-level regression test that verifies the dependency-skip path
+  reaches the verified download stage without changing the host.
+
 ## 1.0.1 - 2026-07-16
 
 - Add a hardened, distro-aware bootstrap installer for Ubuntu/Debian, Fedora,

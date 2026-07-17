@@ -48,10 +48,10 @@ user. Do not run the script itself through `sudo`.
   installer="$(mktemp)"
   trap 'rm -f "$installer"' EXIT
   curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-    https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.1/scripts/bootstrap.sh \
+    https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.2/scripts/bootstrap.sh \
     --output "$installer"
   printf '%s  %s\n' \
-    9f29020e0b6810b61afc3ff8f3c22d6e565bf9e60757096ead5f51bcc7454e1b \
+    1de1f5a319c83ec1e787b48ee86e477366c0b9a0a9e40a10956d25b90591ee9a \
     "$installer" | sha256sum --check -
   less "$installer"
   bash "$installer"
@@ -62,7 +62,7 @@ For a shorter interactive install after reviewing the source URL:
 
 ```bash
 curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-  https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.1/scripts/bootstrap.sh | bash
+  https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.2/scripts/bootstrap.sh | bash
 ```
 
 The bootstrap detects Ubuntu/Debian, Fedora, Arch Linux, and common derivatives;

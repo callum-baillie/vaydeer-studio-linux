@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 umask 022
 
-readonly STUDIO_VERSION="1.0.1"
+readonly STUDIO_VERSION="1.0.2"
 readonly UV_VERSION="0.11.29"
 readonly UV_INSTALLER_SHA256="504a79fd2ed0dcd47e7f04f0792cfd0871f62e24a7fe40fa8ae0f563a369f2bd"
 readonly REPOSITORY="callum-baillie/vaydeer-studio-linux"
@@ -194,7 +194,7 @@ preflight_host_integration() {
 }
 
 install_system_dependencies() {
-  [[ "$install_dependencies" == true ]] || return
+  [[ "$install_dependencies" == true ]] || return 0
   [[ "$package_manager" != "unsupported" ]] || {
     die "Automatic dependency installation is unavailable for $distro_name. Install the documented requirements and rerun with --no-deps."
   }
@@ -215,8 +215,10 @@ install_system_dependencies() {
 secure_download() {
   local url="$1"
   local destination="$2"
-  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-    --proto-redir '=https' --retry 3 --retry-delay 1 --output "$destination" "$url"
+  if ! curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+    --proto-redir '=https' --retry 3 --retry-delay 1 --output "$destination" "$url"; then
+    die "Download failed: $url"
+  fi
 }
 
 find_uv() {
@@ -252,7 +254,9 @@ install_uv() {
   [[ "$actual_sha256" == "$UV_INSTALLER_SHA256" ]] || {
     die "uv installer checksum mismatch; no installer was executed."
   }
-  env UV_NO_MODIFY_PATH=1 sh "$installer" >&2
+  if ! env UV_NO_MODIFY_PATH=1 sh "$installer" >&2; then
+    die "The verified uv installer failed."
+  fi
   uv_command="$(find_uv)" || die "uv installed but its executable could not be found."
   printf 'Installed verified uv: %s (%s)\n' "$uv_command" "$("$uv_command" --version)" >&2
   printf '%s\n' "$uv_command"
