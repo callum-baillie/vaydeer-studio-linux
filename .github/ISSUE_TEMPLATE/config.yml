@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security or hardware-safety report
+    url: https://github.com/callum-baillie/vaydeer-studio-linux/security/advisories/new
+    about: Privately report unsafe writes, command bypasses, action execution issues, or sensitive-data exposure.

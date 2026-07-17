@@ -232,9 +232,7 @@ class WindowState(QObject):
     def _load_maximized(self) -> bool:
         self._settings.beginGroup("window")
         version = self._integer_value("version")
-        maximized = version == self._GEOMETRY_VERSION and bool(
-            self._settings.value("maximized", False, type=bool)
-        )
+        maximized = version == self._GEOMETRY_VERSION and bool(self._settings.value("maximized", False, type=bool))
         self._settings.endGroup()
         return maximized
 

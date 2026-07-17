@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible Vaydeer Studio defect
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach firmware, USB serial numbers, private profiles, or unsanitized logs. Use the app's sanitized diagnostics export.
+  - type: input
+    id: version
+    attributes:
+      label: Vaydeer Studio version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: distribution
+    attributes:
+      label: Linux distribution and desktop
+      placeholder: "Ubuntu 24.04, GNOME Wayland"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device and firmware
+      placeholder: "JP-1011, firmware 1.0.2, bootloader 0.2.1"
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Expected and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics summary
+      description: Review the export before pasting it here.
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: I reviewed this report and removed serial numbers, private paths, profiles, and vendor binaries.
+          required: true

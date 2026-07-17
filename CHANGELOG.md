@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0 - 2026-07-16
+
+- Promote the validated JP-1011 scope to the first public release and add
+  consistent `--version` output for the desktop app, CLI, and Background
+  service.
+- Replace checkout-bound launchers with an isolated `uv tool` installation,
+  install the previously omitted CLI, and generate desktop and systemd entries
+  using the actual installed executable paths.
+- Make the udev rule portable across supported distributions by using a scoped
+  `uaccess` ACL without a distribution-specific group.
+- Add release artifact smoke tests, repository hygiene checks, dependency
+  bounds, public project metadata, and GitHub contribution templates.
+- Rewrite installation and project documentation around the supported v1
+  path, with an explicit unofficial-project notice and honest native-package
+  limitations.
+
 ## 0.1.17 - 2026-07-16
 
 - Restore versioned, decorated window-frame geometry after the native window

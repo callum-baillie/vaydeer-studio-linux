@@ -6,8 +6,12 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 coverage.xml
+coverage/
 htmlcov/
+.nox/
+.tox/
 
 # Build and packaging output
 build/
@@ -17,6 +21,9 @@ AppDir/
 *.AppImage
 *.deb
 *.flatpak
+*.rpm
+*.whl
+wheelhouse/
 packaging/flatpak/build/
 packaging/flatpak/repo/
 
@@ -45,3 +52,6 @@ diagnostics/
 .idea/
 .vscode/
 .DS_Store
+.directory
+*.swp
+*~

@@ -395,9 +395,7 @@ class StudioController(QObject):
                 "reachable": False,
                 "detail": "systemd user service status is unavailable on this host.",
             }
-        values = dict(
-            line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
-        )
+        values = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
         load_state = values.get("LoadState", "not-found")
         active_state = values.get("ActiveState", "inactive")
         unit_file_state = values.get("UnitFileState", "disabled")
@@ -1532,9 +1530,7 @@ class StudioController(QObject):
             self._macro_held_codes.clear()
             self._macro_last_input_at = None
             self._sync_service_bindings()
-            self._status = (
-                f"Created {self.profile.name!r}. Review its mappings before applying them to a device."
-            )
+            self._status = f"Created {self.profile.name!r}. Review its mappings before applying them to a device."
             self.changed.emit()
             self.selectedKeyChanged.emit()
         except Exception as error:

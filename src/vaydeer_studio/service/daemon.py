@@ -16,6 +16,7 @@ from typing import Any
 
 from platformdirs import user_runtime_path
 
+from vaydeer_studio import __version__
 from vaydeer_studio.core.logging import configure_logging
 from vaydeer_studio.core.models import LinuxBinding, TriggerKind
 from vaydeer_studio.core.profiles import ProfileStore
@@ -214,6 +215,7 @@ def request(socket_path: Path, payload: dict[str, Any]) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", action="version", version=f"vaydeer-studiod {__version__}")
     parser.add_argument("--mock", action="store_true", help="Run with mock bindings and no physical device.")
     parser.add_argument("--socket", type=Path, default=default_socket_path())
     parser.add_argument("--log-level", choices=["debug", "info", "warning", "error"], help="Service log level.")

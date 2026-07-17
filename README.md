@@ -1,241 +1,217 @@
 # Vaydeer Studio
 
-Vaydeer Studio is a Linux-first desktop configurator for Vaydeer macro keypads.
-It targets the Vaydeer JP-1011 nine-key keypad first, using a read-only HID
-keepalive that makes its normal keyboard interface stay active on Linux. The
-application separates portable onboard mappings from Linux-side actions,
-creates a backup before every eligible write, previews the diff, and verifies a
-write by reading it back.
+[![CI](https://github.com/callum-baillie/vaydeer-studio-linux/actions/workflows/ci.yml/badge.svg)](https://github.com/callum-baillie/vaydeer-studio-linux/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/callum-baillie/vaydeer-studio-linux)](https://github.com/callum-baillie/vaydeer-studio-linux/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-## Screenshots
+Vaydeer Studio is a Linux desktop configurator for Vaydeer macro keypads, with
+first-class support for the JP-1011 nine-key keypad. It reads and edits onboard
+mappings, keeps the stock keypad active on Linux, and runs optional Linux-only
+actions through a small background service.
+
+> [!IMPORTANT]
+> Vaydeer Studio is an unofficial community project. It is not affiliated with,
+> endorsed by, or supported by Vaydeer. Vaydeer product names and trademarks
+> belong to their respective owners.
+
+The project never flashes firmware. It backs up the keypad before every
+eligible write, shows a human-readable review, requires explicit confirmation,
+and verifies the result by reading it back.
 
 ![Vaydeer Studio overview in the dark theme](screenshots/ui-overview-dark.png)
+
+<details>
+<summary>More screenshots</summary>
 
 ![On-device key editor in the dark theme](screenshots/ui-on-device-keys-dark.png)
 
 ![Linux actions in the dark theme](screenshots/ui-linux-actions-dark.png)
 
-## Why this exists
+![Vaydeer Studio overview in the light theme](screenshots/ui-overview-light.png)
 
-The JP-1011's normal keyboard reports can stop unless its vendor asynchronous
-HID interface is held open. Opening the correct interface read-only is enough;
-no vendor command, write, or read loop is required. Vaydeer Studio discovers
-that interface dynamically rather than relying on a `/dev/hidrawN` number, and
-keeps it open through a small user service.
+</details>
 
-## How it works
+## Install
 
-**Vaydeer Studio** is the desktop app used to inspect the keypad, edit drafts,
-and manage profiles. It can be closed after configuration.
+Vaydeer Studio uses an isolated per-user application environment. The install
+does not modify the system Python and does not depend on the source checkout
+after installation.
 
-**On-device keys** are written to keypad memory. Supported keyboard, media,
-system, layer, and layer-name mappings work on a compatible computer without
-Studio or Linux installed.
+### 1. Install system libraries
 
-**Linux actions** stay on this Linux computer. The lightweight **Background
-service** (`vaydeer-studiod`) keeps the JP-1011 active on Linux and executes
-actions such as launching applications or opening URLs after Studio is closed.
-They never modify keypad memory.
-
-## Features
-
-- Device inspection, layers, layer names, and current mappings.
-- A physical 3-by-3 JP-1011 editor with readable value choices, keyboard
-  capture, layer controls, device-baseline versus pending-sync indicators, and
-  a diff review.
-- Stable onboard single keys, modifiers, combinations, media/system keys, and
-  disabled keys for the observed JP-1011 firmware `1.0.2` / bootloader `0.2.1`.
-- Timestamped open JSON backups, restore staging, dry-run packets, and
-  read-back verification.
-- Portable JSON/YAML profiles and an XDG-backed profile library.
-- Platform-targeted presets for Codex, ChatGPT, Photoshop, and Illustrator,
-  with Linux, macOS, and Windows shortcut variants.
-- Linux-side launch, URL, file, directory, command, notification, and script
-  bindings handled by `vaydeer-studiod`, with editable press/release triggers
-  and a structured argument array. Text injection remains backend-dependent.
-- Host-local user-service state for installation, current runtime, control
-  socket reachability, and login startup, with a no-`sudo` user-unit install.
-- Mock JP-1011 mode for trying the complete interface without hardware.
-- Live tester, diagnostics export, a scoped udev rule, desktop entry, MIME
-  registration, and systemd user service.
-
-## Supported devices
-
-| Device / firmware | Read | On-device writes | Layout |
-| --- | --- | --- | --- |
-| JP-1011, firmware `1.0.2`, bootloader `0.2.1` | Yes | Stable basic mappings | Verified 3 by 3 |
-| Same VID:PID, unknown firmware | Yes, guarded | Disabled | Detected key count |
-| One-, four-, and six-key protocol variants | Adapter/layout scaffold | Disabled pending capture validation | Generic/provisional |
-
-The project probes device type, subtype, firmware, and bootloader. It does not
-assume public `1.1.2` firmware behaves like the observed `1.0.2` device.
-
-## Safety
-
-Firmware updating is intentionally absent. Command `0xFC` is rejected by the
-protocol core and has regression tests proving it cannot be built. Unknown
-commands are rejected too. Before any eligible configuration write, Vaydeer
-Studio reads the device, checks capability, backs it up, creates a human
-readable diff and packet preview, requires confirmation, commits, reads back,
-and compares the result. The desktop UI requires a reviewed diff and a typed
-`APPLY` confirmation before a real write; the CLI retains its own explicit
-terminal confirmation.
-
-See [docs/safety.md](docs/safety.md) for the full boundary.
-
-## Quick start
-
-Mock mode is the fastest validated route:
+Ubuntu 22.04+, Debian 12+, and Linux Mint:
 
 ```bash
-uv sync --extra dev
-uv run vaydeer-studio --mock jp1011
+sudo apt update
+sudo apt install libhidapi-hidraw0 libegl1 libgl1
 ```
 
-The current checkout was validated with `uv sync`, `pytest`, Ruff, mypy, the
-source/wheel build, offscreen Qt smoke launches, and a normal-user read-only
-inspection of an attached JP-1011. For a physical keypad, follow
-[docs/installation.md](docs/installation.md).
-
-## Recommended installation
-
-Install [uv](https://docs.astral.sh/uv/), clone this repository, then run:
+Fedora:
 
 ```bash
-uv sync --extra dev
+sudo dnf install hidapi libglvnd-egl libglvnd-glx
+```
+
+Arch Linux:
+
+```bash
+sudo pacman -S hidapi mesa libglvnd
+```
+
+A graphical desktop session, udev, and a systemd user manager are required for
+the complete hardware experience. Wayland and X11 are supported by Qt.
+
+### 2. Install uv and Vaydeer Studio
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/):
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+Then install Vaydeer Studio:
+
+```bash
+git clone https://github.com/callum-baillie/vaydeer-studio-linux.git
+cd vaydeer-studio-linux
 ./scripts/install.sh
-# Reconnect the keypad after udev reloads its rule, then verify the complete path.
-vaydeer-studio-cli doctor
+```
+
+The script installs all three executables, desktop integration, the narrowly
+scoped device permission rule, and the per-user Background service. It asks
+for `sudo` only when installing the udev rule; the application and service run
+as the desktop user.
+
+Reconnect the keypad once after installation, then verify and launch:
+
+```bash
+~/.local/bin/vaydeer-studio-cli doctor
 ~/.local/bin/vaydeer-studio
 ```
 
-`install.sh` installs only user integration plus the narrowly scoped udev rule
-for VID:PID `0483:5752` interfaces 0 and 2. It requires `sudo` only for that
-one udev file and starts the user service. Do not run the desktop application
-as root.
+If `~/.local/bin` is already on `PATH`, use `vaydeer-studio` directly. See the
+[installation guide](docs/installation.md) for update, custom XDG path,
+service-only, and repair instructions.
 
-### Ubuntu and Debian
+## What Runs Where
 
-Install a current Python 3.11+ and system HID library before using `uv`:
+| Part | Where it runs or lives | Must Studio stay open? |
+| --- | --- | --- |
+| **Vaydeer Studio** | Visible desktop configuration app | No |
+| **On-device keys** | Stored in keypad memory | No; they travel with the keypad |
+| **Background service** (`vaydeer-studiod`) | Small per-user Linux service | No; it starts at login |
+| **Linux actions** | Local profile data executed by the service | Studio: no; service: yes |
+| **Profiles** | Portable JSON or YAML files on the computer | No |
 
-```bash
-sudo apt install libhidapi-hidraw0 libegl1 libgl1
-uv sync --extra dev
-./scripts/install.sh
-```
+The JP-1011's standard keyboard output can stop on Linux unless vendor HID
+interface 2 is held open. The Background service discovers that interface by
+VID/PID, interface number, usage page, usage, report descriptor, and sysfs
+metadata. It opens the interface read-only and never relies on a fixed
+`/dev/hidrawN` path.
 
-### Fedora
+## Capabilities
 
-```bash
-sudo dnf install hidapi libglvnd-egl mesa-libGL
-uv sync --extra dev
-./scripts/install.sh
-```
+- Detect and inspect a connected JP-1011.
+- Read device information, layer names, active layer, and current mappings.
+- Edit the physical 3-by-3 keypad with current versus pending state markers.
+- Write verified single keys, modifiers, combinations, media/system controls,
+  disabled keys, layers, and layer names on the validated firmware.
+- Preview a diff, create an XDG timestamped backup, confirm, write, and verify.
+- Create, duplicate, import, export, and validate versioned profiles.
+- Build Linux, macOS, and Windows-targeted portable mapping profiles.
+- Start from Codex, ChatGPT, Photoshop, and Illustrator profile templates.
+- Run Linux actions for applications, URLs, files, directories, commands,
+  scripts, notifications, and supported software text behavior.
+- Test physical vendor events without changing the keypad.
+- Diagnose permissions, HID interfaces, service state, and device support.
+- Demonstrate every screen without hardware using the JP-1011 mock.
 
-### Arch Linux
+## Device Support
 
-```bash
-sudo pacman -S hidapi mesa
-uv sync --extra dev
-./scripts/install.sh
-```
+| Device | Inspection | On-device writes | Layout |
+| --- | --- | --- | --- |
+| JP-1011, firmware `1.0.2`, bootloader `0.2.1` | Supported | Supported stable mappings | Verified 3 by 3 |
+| Same VID:PID with unknown firmware | Guarded read-only | Disabled | Detected key count |
+| One-, four-, and six-key protocol variants | Experimental adapters | Disabled | Generic/provisional |
 
-Distribution package names can vary. The diagnostic screen reports the actual
-permission and interface state when a command interface cannot be opened.
+Unknown firmware remains read-only because public firmware `1.1.2` has not
+been assumed equivalent to the observed `1.0.2` device. The capability table
+also checks VID, PID, reported type/subtype, key count, and bootloader.
 
-### AppImage, Debian package, and Flatpak
+See [device support](docs/device-support.md) for the exact compatibility
+boundary.
 
-`make package` always builds the Python sdist and wheel. Reproducible AppImage,
-Debian, and Flatpak scripts/manifests live in `packaging/`, but none of those
-native artifacts was produced in this environment because `appimagetool`,
-`dh-virtualenv`, and `flatpak-builder` were unavailable. The scripts report
-their missing prerequisites rather than claiming a completed package.
+## First Run
 
-### Source installation
+1. Open **Overview** to check the keypad and Background service.
+2. Use **Setup** if permissions or the service need attention.
+3. In **On-device keys**, select **Read from keypad** before editing.
+4. Select a layer and key, choose a friendly action, and save the draft.
+5. Use **Review changes**, then **Write to keypad**. A physical write requires
+   typing `APPLY`; the backup and read-back verification remain mandatory.
+6. Use **Linux actions** for host-only work such as launching an application.
+7. Save or export the combined configuration from **Profiles**.
 
-Use the quick-start commands for a source checkout. The install script creates
-`~/.local/bin/vaydeer-studio`, `~/.local/bin/vaydeer-studiod`, desktop/MIME
-entries, and a user unit. `make run` is a mock-mode shortcut.
+Selecting or saving a profile never silently writes it to the keypad. Profiles
+can contain both portable onboard mappings and Linux-only actions, and the UI
+labels those sections separately.
 
-## First run
+## Safety Guarantees
 
-1. Open **Overview**. It shows the keypad and Background service state, then
-   points to either keypad-memory configuration or Linux-only actions.
-2. Open **Setup** when permissions or the service need attention. It safely
-   verifies each prerequisite and can install or start the user service. Use
-   `./scripts/install.sh` to install the scoped udev rule, then reconnect the
-   keypad.
-3. Open **On-device keys**, choose a layer and physical key, then use **Read
-   from keypad** from the action menu before editing a draft.
-4. Select **Review changes** and then **Write to keypad**. The dialog shows the
-   backup location and affected keys; a real write requires typing `APPLY` in
-   the application and is read back for verification.
-5. Use **Linux actions** for work that only runs on this computer. Save those
-   actions to a Linux profile; they run while the Background service is ready.
-6. Save or export the profile from **Profiles**. Selecting a profile does not
-   write it to the keypad automatically.
+- Firmware command `0xFC` is blocked at the protocol boundary and covered by
+  regression tests.
+- Unknown command IDs and unknown assignment payloads are rejected.
+- Firmware flashing, raw command consoles, command scanning, and bootloader
+  changes are absent.
+- Unknown firmware is read-only.
+- Keepalive access is `O_RDONLY | O_CLOEXEC`; no keepalive read or write is
+  required unless the Live tester is explicitly listening.
+- Hardware writes require a current capability check, backup, review,
+  confirmation, exclusive command session, and read-back comparison.
 
-Every backup is versioned JSON under the XDG data directory, normally
-`~/.local/share/Vaydeer Studio/backups`. Restore first stages that backup for
-the same review flow.
-
-## Linux actions
-
-Linux actions deliberately live outside keypad firmware. Select a physical key
-and layer, create an action in **Linux actions**, then save it to the profile.
-The Background service handles the vendor event. Commands use an executable
-plus argument array by default; shell execution requires an explicit opt-in in
-Advanced mode. The service currently executes `press` and `release` triggers.
-These actions need Linux and the running service, unlike stable on-device keys.
-
-## Basic and Advanced modes
-
-Basic mode is the default and contains the normal configuration workflow.
-Advanced mode exposes raw reports, documented values, capability notes, and
-shell options without changing stored data. The selected mode, theme, and last
-page are retained between launches.
-
-## Application presets and portable profiles
-
-The **Profiles** page can start a new JP-1011 profile from Codex, ChatGPT,
-Photoshop, or Illustrator presets. Choose **Linux**, **macOS**, or **Windows**
-before creating it. The primary modifier is written as `Ctrl` for Linux and
-Windows and `Meta` (Command) for macOS, so exported profiles remain explicit
-about their target. These presets contain portable onboard shortcuts only;
-Linux-side actions are enabled and synchronized to `vaydeer-studiod` only for
-profiles whose target is Linux.
-
-On the mapping page, **Capture a key** makes the next computer-keyboard input
-explicit. A numeric keypad `7` is captured as `Num 7`, while the ordinary top
-row digit remains `7`; the capture message shows the stored JP-1011 value.
-While this page is open, pressing a physical keypad key selects that same key
-in the editor without writing or recording a live tester event.
+Read [the safety policy](docs/safety.md) before extending protocol code.
 
 ## Troubleshooting
 
-If normal key events disappear, check the service:
+If the keypad is visible over USB but keyboard events stop:
 
 ```bash
 systemctl --user status vaydeer-studio.service
-vaydeer-studio-cli doctor
-vaydeer-studio-cli diagnostics --verbose
+~/.local/bin/vaydeer-studio-cli doctor
+~/.local/bin/vaydeer-studio-cli diagnostics --verbose
 ```
 
-Reconnect the keypad after installing the udev rule. See
-[docs/troubleshooting.md](docs/troubleshooting.md) for permissions and HID
-diagnostics, [the live detection report](docs/research/live-device-detection-debug.md)
-for the repaired hidapi/sysfs behavior, and export a sanitized diagnostic bundle
-from the app.
+Reconnect the keypad after installing or changing the udev rule. Do not open a
+guessed hidraw node or run a firmware updater. The [troubleshooting guide](docs/troubleshooting.md)
+covers permission denial, service startup, reconnect recovery, read-only
+firmware, and Live tester issues.
 
-## Uninstall
+## Update and Uninstall
+
+Update from a checkout:
+
+```bash
+git pull --ff-only
+./scripts/install.sh
+```
+
+Uninstall from the repository or a release source archive:
 
 ```bash
 ./scripts/uninstall.sh
-# Keep the scoped udev rule for another local HID client:
-./scripts/uninstall.sh --keep-udev
 ```
 
-Backups and profiles are retained deliberately.
+Use `./scripts/uninstall.sh --keep-udev` when another local tool still needs
+the scoped rule. Profiles, backups, and diagnostics are retained deliberately;
+their locations are documented in the [installation guide](docs/installation.md).
+
+## Packages
+
+The validated v1 artifacts are a Python wheel and source archive. The source
+installer uses `uv tool` and works independently of the distribution's Python
+package set. AppImage, native Debian, RPM, and Flatpak bundles are **not**
+released or claimed to work. Their host-integration constraints are documented
+in [packaging/README.md](packaging/README.md).
 
 ## Development
 
@@ -246,25 +222,40 @@ make typecheck
 make test
 make build
 make docs
+make install-smoke
 ```
 
-Hardware tests are opt-in with `VAYDEER_HARDWARE_TESTS=1`; they never include
-firmware commands. [docs/development.md](docs/development.md) explains the
-mock transport and test layers, and [docs/interaction-design.md](docs/interaction-design.md)
-records the mapping, binding, and profile workflow. Contributions are welcome
-under [CONTRIBUTING.md](CONTRIBUTING.md).
+Run the complete UI without hardware:
+
+```bash
+uv run vaydeer-studio --mock jp1011
+```
+
+Hardware tests are read-only, opt-in, and require
+`VAYDEER_HARDWARE_TESTS=1`. See [development](docs/development.md),
+[architecture](docs/architecture.md), and [contributing](CONTRIBUTING.md).
 
 ## Limitations
 
-Mouse, macro, text, layer/Vaydeer-specific, host-trigger, and unknown vendor
-assignments are modeled as experimental only. Their physical payload formats
-are not sent because they cannot yet be safely round-tripped. Firmware flashing
-and QMK replacement are out of scope. See [docs/device-support.md](docs/device-support.md)
-and [docs/research](docs/research) for evidence and unknowns.
+- Stable physical writes are limited to the validated JP-1011 firmware and
+  documented mapping types.
+- Mouse, onboard macro, onboard text, host-trigger, layer/Vaydeer-specific,
+  and unknown vendor assignments remain experimental models and are never
+  transmitted to hardware.
+- Software text execution depends on an available desktop backend.
+- Linux actions require this Linux machine and its running Background service.
+- The application configures macOS/Windows-targeted portable profiles but runs
+  only on Linux.
+- Native distribution bundles are not yet supported.
 
-## License and acknowledgement
+## Research, Support, and License
 
-Vaydeer Studio is MIT licensed. It is an original implementation informed by
-public projects and locally conducted research; no vendor binaries or copied
-unlicensed source are included. See [LICENSE](LICENSE),
-[ATTRIBUTION.md](ATTRIBUTION.md), and [docs/research/sources.md](docs/research/sources.md).
+The reverse-engineering record is preserved under [docs/research](docs/research)
+with sanitized source reports under [research/sanitized-reports](research/sanitized-reports).
+No vendor firmware, installer, extracted application, serial number, or private
+host log is included.
+
+Use [GitHub Issues](https://github.com/callum-baillie/vaydeer-studio-linux/issues)
+for reproducible bugs and [SECURITY.md](SECURITY.md) for safety-sensitive
+reports. Vaydeer Studio is MIT licensed. Public-source revisions, authors,
+licenses, and clean-room decisions are recorded in [ATTRIBUTION.md](ATTRIBUTION.md).

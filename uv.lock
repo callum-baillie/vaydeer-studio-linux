@@ -646,7 +646,7 @@ wheels = [
 
 [[package]]
 name = "vaydeer-studio"
-version = "0.1.17"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "hidapi" },
@@ -668,14 +668,14 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "build", marker = "extra == 'dev'", specifier = ">=1.2.1" },
-    { name = "hidapi", specifier = ">=0.14.0" },
+    { name = "hidapi", specifier = ">=0.14.0,<1" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10.0" },
-    { name = "platformdirs", specifier = ">=4.2.0" },
-    { name = "pydantic", specifier = ">=2.7.0" },
-    { name = "pyside6", specifier = ">=6.7.0" },
+    { name = "platformdirs", specifier = ">=4.2.0,<5" },
+    { name = "pydantic", specifier = ">=2.7.0,<3" },
+    { name = "pyside6", specifier = ">=6.7.0,<7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.2.0" },
     { name = "pytest-qt", marker = "extra == 'dev'", specifier = ">=4.4.0" },
-    { name = "pyyaml", specifier = ">=6.0.1" },
+    { name = "pyyaml", specifier = ">=6.0.1,<7" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.5.0" },
 ]
 provides-extras = ["dev"]

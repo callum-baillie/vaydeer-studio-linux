@@ -10,6 +10,7 @@ from PySide6.QtCore import QCoreApplication, QTimer, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
+from vaydeer_studio import __version__
 from vaydeer_studio.core.logging import configure_logging
 
 from .controller import StudioController
@@ -21,6 +22,7 @@ _window_state_refs: list[WindowState] = []
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Vaydeer Studio desktop application")
+    parser.add_argument("--version", action="version", version=f"Vaydeer Studio {__version__}")
     parser.add_argument("--mock", choices=["jp1011"], help="Run against the built-in JP-1011 mock device.")
     parser.add_argument("--smoke", action="store_true", help="Launch QML then exit automatically for validation.")
     parser.add_argument("--debug", action="store_true", help="Enable safe hardware discovery logging.")

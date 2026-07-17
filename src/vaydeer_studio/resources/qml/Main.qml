@@ -2269,6 +2269,13 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                                 font.pixelSize: 12
                             }
+                            Label {
+                                Layout.fillWidth: true
+                                text: "Vaydeer Studio is an unofficial community project and is not affiliated with, endorsed by, or supported by Vaydeer."
+                                color: window.muted
+                                wrapMode: Text.WordWrap
+                                font.pixelSize: 12
+                            }
                         }
                     }
                 }

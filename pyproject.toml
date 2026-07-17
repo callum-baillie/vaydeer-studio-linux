@@ -4,15 +4,16 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vaydeer-studio"
-version = "0.1.17"
+version = "1.0.0"
 description = "A Linux-first desktop configurator for Vaydeer macro keypads"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE", "ATTRIBUTION.md"]
 authors = [{name = "Vaydeer Studio contributors"}]
 keywords = ["vaydeer", "hid", "macro-keypad", "linux", "pyside6"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 4 - Beta",
   "Environment :: X11 Applications :: Qt",
   "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: MIT License",
@@ -21,12 +22,18 @@ classifiers = [
   "Programming Language :: Python :: 3 :: Only",
 ]
 dependencies = [
-  "hidapi>=0.14.0",
-  "platformdirs>=4.2.0",
-  "pydantic>=2.7.0",
-  "PySide6>=6.7.0",
-  "PyYAML>=6.0.1",
+  "hidapi>=0.14.0,<1",
+  "platformdirs>=4.2.0,<5",
+  "pydantic>=2.7.0,<3",
+  "PySide6>=6.7.0,<7",
+  "PyYAML>=6.0.1,<7",
 ]
+
+[project.urls]
+Homepage = "https://github.com/callum-baillie/vaydeer-studio-linux"
+Documentation = "https://github.com/callum-baillie/vaydeer-studio-linux/tree/main/docs"
+Issues = "https://github.com/callum-baillie/vaydeer-studio-linux/issues"
+Repository = "https://github.com/callum-baillie/vaydeer-studio-linux"
 
 [project.optional-dependencies]
 dev = [
@@ -46,7 +53,24 @@ vaydeer-studiod = "vaydeer_studio.service.daemon:main"
 packages = ["src/vaydeer_studio"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src", "docs", "packaging", "scripts", "examples", "README.md", "LICENSE", "ATTRIBUTION.md"]
+include = [
+  "src",
+  "docs",
+  "research",
+  "screenshots",
+  "packaging",
+  "scripts",
+  "examples",
+  "Makefile",
+  "uv.lock",
+  "README.md",
+  "LICENSE",
+  "ATTRIBUTION.md",
+  "CHANGELOG.md",
+  "CODE_OF_CONDUCT.md",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

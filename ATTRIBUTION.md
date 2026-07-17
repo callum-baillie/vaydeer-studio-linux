@@ -1,6 +1,10 @@
 # Attribution and Licensing
 
 Vaydeer Studio is an original implementation released under the MIT License.
+It is an unofficial community project and is not affiliated with, endorsed by,
+or supported by Vaydeer. Product names and trademarks remain the property of
+their respective owners.
+
 It does not include code, firmware, installers, extracted Electron assets, or
 binary data from Vaydeer or the projects listed below.
 

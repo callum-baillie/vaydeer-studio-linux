@@ -50,8 +50,10 @@ evidence, not device identifiers.
 | 2 | `.../usb/1-2/1-2:1.2/0003:0483:5752.<instance>` | `/dev/hidraw2` | `0xFF00` / `0x0002` | `06 00 ff 09 02` | `crw-rw---- root:plugdev`, ACL, normal-user read open | `vaydeer-studiod`, read-only keepalive |
 | 3 | `.../usb/1-2/1-2:1.3/0003:0483:5752.<instance>` | `/dev/hidraw3` | mouse page / no vendor usage | `05 01 09 02` | `crw-rw---- root:plugdev`, ACL, normal-user read open | Linux mouse, consumer, and system input |
 
-`udevadm test` confirmed that the installed Vaydeer Studio rule applies mode
-`0660`, group `plugdev`, and `uaccess` only to interfaces 0 and 2. The service
+`udevadm test` confirmed that the rule used during this validation applied mode
+`0660`, group `plugdev`, and `uaccess` only to interfaces 0 and 2. The v1 rule
+keeps the scoped `0660` and `uaccess` policy but removes the distribution-specific
+group. The service
 unit runs through the user-level launcher rather than a privileged GUI. A
 verbose diagnostic intentionally omits serial values while reporting the same
 usage, permission, service, and protocol facts.
@@ -89,7 +91,7 @@ the intended custom rule did not visibly apply during rule testing.
    node with `O_RDONLY | O_CLOEXEC` and keeps it open without a write or polling
    requirement.
 7. Match the udev rule at the HID parent and constrain `DEVPATH` to USB
-   interfaces `0` and `2`, with mode `0660`, `plugdev` fallback, and `uaccess`.
+   interfaces `0` and `2`, with mode `0660` and `uaccess`.
 8. Track the sysfs HID-instance path in addition to the hidraw node. If Linux
    reuses the same hidraw number after a replug, both the keepalive and UI
    reopen their handles instead of mistaking a stale descriptor for a live one.

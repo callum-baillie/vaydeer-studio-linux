@@ -3,7 +3,6 @@ set -euo pipefail
 
 root="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 cd "$root"
-command -v appimagetool >/dev/null || { echo "Install appimagetool first." >&2; exit 2; }
-echo "The staging manifest is ready, but a portable Python/Qt runtime is required."
-echo "Use appimage-builder with Python 3.11+, PySide6, and hidapi bundled before invoking appimagetool."
-echo "No incomplete AppImage is produced by this script."
+echo "AppImage is not a supported v1 package because its portable Qt/HID runtime is unresolved." >&2
+echo "See packaging/README.md. No artifact was produced." >&2
+exit 2

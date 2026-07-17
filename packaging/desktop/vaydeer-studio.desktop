@@ -6,6 +6,5 @@ Exec=vaydeer-studio
 Icon=vaydeer-studio
 Terminal=false
 Categories=Utility;
-MimeType=application/x-vaydeer-profile;
 Keywords=Vaydeer;keypad;macro;HID;
 StartupNotify=true

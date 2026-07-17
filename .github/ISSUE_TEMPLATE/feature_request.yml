@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose a focused product or device-support improvement
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the workflow or limitation, not only a proposed control.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - Desktop UI
+        - On-device mapping
+        - Linux action or service
+        - Profile format
+        - Device support
+        - Documentation or packaging
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Protocol or hardware evidence
+      description: Required for new physical-device write behavior. Do not include proprietary binaries.

@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from vaydeer_studio import __version__
 from vaydeer_studio.core.backup import BackupStore
 from vaydeer_studio.core.diff import format_diff
 from vaydeer_studio.core.logging import configure_logging
@@ -205,6 +206,7 @@ def cmd_service_status(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="vaydeer-studio-cli", description=__doc__)
+    parser.add_argument("--version", action="version", version=f"Vaydeer Studio CLI {__version__}")
     parser.add_argument("--mock", action="store_true", help="Use the in-memory JP-1011 device.")
     parser.add_argument("--verbose", action="store_true", help="Enable safe structured diagnostic logging.")
     subparsers = parser.add_subparsers(dest="command", required=True)

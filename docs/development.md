@@ -1,7 +1,9 @@
 # Development
 
 Use `make setup`, `make lint`, `make typecheck`, `make test`, `make build`, and
-`make docs`. The test suite uses a stateful mock JP-1011 with the observed
+`make docs`. `make package` validates the wheel and source archive, while
+`make install-smoke` exercises a complete install and uninstall in a temporary
+XDG home. The test suite uses a stateful mock JP-1011 with the observed
 firmware `1.0.2`, bootloader `0.2.1`, nine keys, six maximum layers, event
 reports, disconnect/reconnect behavior, permission failures, checksum errors,
 and partial writes.
