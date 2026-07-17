@@ -8,6 +8,7 @@ from PySide6.QtCore import QCoreApplication, QObject, QUrl
 from PySide6.QtQml import QQmlApplicationEngine
 
 from vaydeer_studio.ui.controller import StudioController
+from vaydeer_studio.ui.window_state import WindowState
 
 
 def _stop_controller_timers(controller: StudioController) -> None:
@@ -22,9 +23,11 @@ def test_qml_shell_switches_modes_and_keeps_the_app_bar_visible(qtbot, monkeypat
     QCoreApplication.setOrganizationDomain("tests.vaydeer-studio.local")
     QCoreApplication.setApplicationName("Vaydeer Studio Tests")
     controller = StudioController(mock=True)
+    window_state = WindowState(enabled=False)
     _stop_controller_timers(controller)
     engine = QQmlApplicationEngine()
     engine.rootContext().setContextProperty("vaydeerBridge", controller)
+    engine.rootContext().setContextProperty("windowState", window_state)
     qml_path = files("vaydeer_studio.resources.qml").joinpath("Main.qml")
     engine.load(QUrl.fromLocalFile(str(qml_path)))
 
@@ -69,5 +72,22 @@ def test_qml_shell_switches_modes_and_keeps_the_app_bar_visible(qtbot, monkeypat
     window.setProperty("height", 720)
     qtbot.wait(50)
     assert app_bar.property("height") == 64
+
+    window.setProperty("navIndex", 3)
+    qtbot.waitUntil(lambda: pages.property("currentIndex") == 3, timeout=2_000)
+    profiles_scroll = window.findChild(QObject, "profilesScroll")
+    profiles_scroll_bar = window.findChild(QObject, "profilesScrollBar")
+    assert profiles_scroll is not None
+    assert profiles_scroll_bar is not None
+    qtbot.waitUntil(
+        lambda: profiles_scroll.property("contentHeight") > profiles_scroll.property("height"),
+        timeout=2_000,
+    )
+    assert profiles_scroll_bar.property("visible") is True
+    profiles_scroll.setProperty(
+        "contentY",
+        profiles_scroll.property("contentHeight") - profiles_scroll.property("height"),
+    )
+    qtbot.waitUntil(lambda: profiles_scroll.property("contentY") > 0, timeout=2_000)
 
     window.close()

@@ -71,6 +71,11 @@ the scope of this polish pass and remain unchanged.
   actions with language, labels, and color-independent text.
 - Reduced raw technical detail in Basic mode and added helpful empty, loading,
   disconnected, and service-stopped states.
+- Persist normal window size, position, and maximized state. Restored geometry
+  is clamped to an available display so a changed DPI, moved panel, or
+  disconnected external monitor cannot reopen Studio off-screen.
+- Make the Profiles page explicitly vertically scrollable, with an always
+  visible scrollbar at constrained laptop heights.
 - Added responsive mock rendering coverage and refreshed documented screenshots.
 
 ## Deferred ideas
@@ -81,5 +86,3 @@ the scope of this polish pass and remain unchanged.
   test pass.
 - Full undo/redo history for profile drafts. The current discard-to-device
   baseline path remains the reliable recovery mechanism.
-- Per-monitor window-position restoration. Theme, mode, and selected page are
-  persisted; window geometry is intentionally left to the window manager.

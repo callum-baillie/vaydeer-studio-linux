@@ -5,11 +5,11 @@ import QtCore
 
 ApplicationWindow {
     id: window
-    visible: true
-    width: 1440
-    height: 900
-    minimumWidth: 1024
-    minimumHeight: 680
+    visible: false
+    width: 1280
+    height: 800
+    minimumWidth: 960
+    minimumHeight: 620
     title: "Vaydeer Studio"
     color: appBackground
 
@@ -612,10 +612,15 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        windowState.restore(window)
         if (navIndex < 0 || navIndex > helpPageIndex)
             navigate(0)
         else
             vaydeerBridge.setActivePage(navIndex)
+    }
+
+    onClosing: function(close) {
+        windowState.save(window)
     }
 
     Item {
@@ -1533,11 +1538,33 @@ ApplicationWindow {
 
                 // Profiles
                 Item {
-                    ScrollView {
+                    Flickable {
+                        id: profilesScroll
+                        objectName: "profilesScroll"
                         anchors.fill: parent
-                        contentWidth: availableWidth
+                        contentWidth: width
+                        contentHeight: profilesContent.implicitHeight + 40
                         clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.VerticalFlick
+                        ScrollBar.vertical: ScrollBar {
+                            id: profilesScrollBar
+                            objectName: "profilesScrollBar"
+                            policy: ScrollBar.AlwaysOn
+                            implicitWidth: 10
+                            contentItem: Rectangle {
+                                implicitWidth: 6
+                                radius: 3
+                                color: profilesScrollBar.pressed ? window.accent : window.secondaryText
+                                opacity: profilesScrollBar.pressed || profilesScrollBar.hovered ? 0.9 : 0.65
+                            }
+                            background: Rectangle {
+                                implicitWidth: 10
+                                color: "transparent"
+                            }
+                        }
                         ColumnLayout {
+                            id: profilesContent
                             width: Math.max(0, parent.width - 48)
                             x: 24
                             y: 20

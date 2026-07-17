@@ -10,6 +10,7 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
+os.environ.setdefault("VAYDEER_STUDIO_DISABLE_WINDOW_STATE", "1")
 
 from importlib.resources import files
 
@@ -20,8 +21,9 @@ from PySide6.QtQuick import QQuickItem
 from PySide6.QtTest import QTest
 
 from vaydeer_studio.ui.controller import StudioController
+from vaydeer_studio.ui.window_state import WindowState
 
-_refs: list[StudioController] = []
+_refs: list[StudioController | WindowState] = []
 _PAGE_KEYPADS = {
     0: "deviceOverviewKeypad",
     1: "mappingKeypad",
@@ -46,6 +48,7 @@ def main() -> int:
     parser.add_argument("--click-key", type=int, choices=range(9), help="Click a rendered keypad key before capture")
     parser.add_argument("--width", type=int, default=1440, help="Window width used for the rendered capture")
     parser.add_argument("--height", type=int, default=900, help="Window height used for the rendered capture")
+    parser.add_argument("--scroll-y", type=float, help="Scroll the Profiles page before capturing")
     args = parser.parse_args()
     target = args.output
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -55,8 +58,11 @@ def main() -> int:
     application = QGuiApplication([])
     engine = QQmlApplicationEngine()
     controller = StudioController(mock=not args.live)
+    window_state = WindowState()
     _refs.append(controller)
+    _refs.append(window_state)
     engine.rootContext().setContextProperty("vaydeerBridge", controller)
+    engine.rootContext().setContextProperty("windowState", window_state)
     engine.load(QUrl.fromLocalFile(str(files("vaydeer_studio.resources.qml").joinpath("Main.qml"))))
     if not engine.rootObjects():
         return 1
@@ -82,6 +88,11 @@ def main() -> int:
         if dialog is None:
             return 1
         dialog.open()
+
+    if args.scroll_y is not None:
+        scroll_view = window.findChild(QObject, "profilesScroll")
+        if scroll_view is not None:
+            scroll_view.setProperty("contentY", args.scroll_y)
 
     def click_key() -> None:
         if args.click_key is None:

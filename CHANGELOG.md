@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.16 - 2026-07-16
+
+- Persist normal window size, location, and maximized state, while clamping a
+  restored window to an available display after monitor, panel, or DPI changes.
+- Replace the Profiles page's implicit clipped overflow with a visible,
+  keyboard and pointer-scrollable viewport at constrained laptop heights.
+
 ## 0.1.15 - 2026-07-16
 
 - Normalize text-field and text-area foreground, placeholder, disabled,

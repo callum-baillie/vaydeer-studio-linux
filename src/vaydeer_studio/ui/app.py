@@ -13,8 +13,10 @@ from PySide6.QtQml import QQmlApplicationEngine
 from vaydeer_studio.core.logging import configure_logging
 
 from .controller import StudioController
+from .window_state import WindowState
 
 _controller_refs: list[StudioController] = []
+_window_state_refs: list[WindowState] = []
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,9 +33,12 @@ def main(argv: list[str] | None = None) -> int:
     application = QGuiApplication([sys.argv[0], *qt_args])
     engine = QQmlApplicationEngine()
     controller = StudioController(mock=args.mock == "jp1011")
+    window_state = WindowState()
     # Context properties do not retain Python wrappers while Qt owns the event loop.
     _controller_refs.append(controller)
+    _window_state_refs.append(window_state)
     engine.rootContext().setContextProperty("vaydeerBridge", controller)
+    engine.rootContext().setContextProperty("windowState", window_state)
     qml_path = files("vaydeer_studio.resources.qml").joinpath("Main.qml")
     engine.load(QUrl.fromLocalFile(str(qml_path)))
     if not engine.rootObjects():
