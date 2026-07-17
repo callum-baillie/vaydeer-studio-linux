@@ -6,7 +6,8 @@ That path installs the application independently of the checkout and integrates
 the desktop entry, MIME metadata, udev rule, and systemd user service.
 
 `scripts/package.sh` produces and smoke-tests the Python wheel and source
-archive. Those are the release artifacts validated by CI.
+archive, then generates `dist/SHA256SUMS`. Those are the release artifacts
+validated by CI and consumed by the versioned bootstrap installer.
 
 ## Native bundle constraints
 

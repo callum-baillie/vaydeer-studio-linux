@@ -37,50 +37,41 @@ Vaydeer Studio uses an isolated per-user application environment. The install
 does not modify the system Python and does not depend on the source checkout
 after installation.
 
-### 1. Install system libraries
+### Recommended installer
 
-Ubuntu 22.04+, Debian 12+, and Linux Mint:
-
-```bash
-sudo apt update
-sudo apt install libhidapi-hidraw0 libegl1 libgl1
-```
-
-Fedora:
+Download the versioned installer, inspect it, and run it as your normal desktop
+user. Do not run the script itself through `sudo`.
 
 ```bash
-sudo dnf install hidapi libglvnd-egl libglvnd-glx
+(
+  set -e
+  installer="$(mktemp)"
+  trap 'rm -f "$installer"' EXIT
+  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+    https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.1/scripts/bootstrap.sh \
+    --output "$installer"
+  printf '%s  %s\n' \
+    9f29020e0b6810b61afc3ff8f3c22d6e565bf9e60757096ead5f51bcc7454e1b \
+    "$installer" | sha256sum --check -
+  less "$installer"
+  bash "$installer"
+)
 ```
 
-Arch Linux:
+For a shorter interactive install after reviewing the source URL:
 
 ```bash
-sudo pacman -S hidapi mesa libglvnd
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+  https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.1/scripts/bootstrap.sh | bash
 ```
 
-A graphical desktop session, udev, and a systemd user manager are required for
-the complete hardware experience. Wayland and X11 are supported by Qt.
-
-### 2. Install uv and Vaydeer Studio
-
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/):
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Then install Vaydeer Studio:
-
-```bash
-git clone https://github.com/callum-baillie/vaydeer-studio-linux.git
-cd vaydeer-studio-linux
-./scripts/install.sh
-```
-
-The script installs all three executables, desktop integration, the narrowly
-scoped device permission rule, and the per-user Background service. It asks
-for `sudo` only when installing the udev rule; the application and service run
-as the desktop user.
+The bootstrap detects Ubuntu/Debian, Fedora, Arch Linux, and common derivatives;
+shows the exact package-manager commands; and asks before changing anything. It
+installs required desktop/HID libraries, installs a pinned and checksummed `uv`
+when needed, verifies the Vaydeer Studio release archive against its published
+`SHA256SUMS`, and delegates to the per-user installer. `sudo` is used only for
+distribution packages and the narrowly scoped udev rule. Studio and its
+Background service never run as root.
 
 Reconnect the keypad once after installation, then verify and launch:
 
@@ -90,8 +81,8 @@ Reconnect the keypad once after installation, then verify and launch:
 ```
 
 If `~/.local/bin` is already on `PATH`, use `vaydeer-studio` directly. See the
-[installation guide](docs/installation.md) for update, custom XDG path,
-service-only, and repair instructions.
+[installation guide](docs/installation.md) for installer options, manual
+installation, updates, custom XDG paths, and repair instructions.
 
 ## What Runs Where
 
@@ -188,7 +179,8 @@ firmware, and Live tester issues.
 
 ## Update and Uninstall
 
-Update from a checkout:
+To update, use the installer command from the release you want to install. From
+a checkout, update and reinstall with:
 
 ```bash
 git pull --ff-only
@@ -207,11 +199,12 @@ their locations are documented in the [installation guide](docs/installation.md)
 
 ## Packages
 
-The validated v1 artifacts are a Python wheel and source archive. The source
-installer uses `uv tool` and works independently of the distribution's Python
-package set. AppImage, native Debian, RPM, and Flatpak bundles are **not**
-released or claimed to work. Their host-integration constraints are documented
-in [packaging/README.md](packaging/README.md).
+The validated v1 artifacts are a Python wheel, source archive, and
+`SHA256SUMS` manifest. The source installer uses `uv tool` and works
+independently of the distribution's Python package set. AppImage, native
+Debian, RPM, and Flatpak bundles are **not** released or claimed to work. Their
+host-integration constraints are documented in
+[packaging/README.md](packaging/README.md).
 
 ## Development
 

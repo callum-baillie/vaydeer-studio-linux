@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.0.1 - 2026-07-16
+
+- Add a hardened, distro-aware bootstrap installer for Ubuntu/Debian, Fedora,
+  Arch Linux, and compatible derivatives.
+- Pin and checksum the fallback uv installer, verify release source archives,
+  show package-manager changes before execution, and retain per-user privilege
+  boundaries.
+- Document reviewed-download and interactive `curl | bash` workflows, installer
+  options, manual installation, and update behavior.
+- Generate a `SHA256SUMS` manifest with every release build and test bootstrap
+  distribution plans in CI.
+
 ## 1.0.0 - 2026-07-16
 
 - Promote the validated JP-1011 scope to the first public release and add

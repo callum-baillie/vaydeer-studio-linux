@@ -1,40 +1,136 @@
 # Installation
 
-Vaydeer Studio 1.0 uses `uv tool` for an isolated per-user application
-environment. It does not install packages into the system Python, and the
-source checkout can be removed after installation.
+Vaydeer Studio uses `uv tool` for an isolated per-user application environment.
+It does not install packages into the system Python, and downloaded installation
+sources are removed after a successful install.
 
 ## Requirements
 
 - A Linux graphical desktop using Wayland or X11.
 - udev and logind `uaccess` ACL support for physical keypad access.
 - A systemd user manager for the Background service.
-- EGL/GL and hidapi system libraries.
-- [uv](https://docs.astral.sh/uv/getting-started/installation/).
+- EGL/GL, X11 compatibility, and hidapi system libraries.
+- `curl` with HTTPS support.
 
-The official uv installer is:
+## Recommended Install
+
+The recommended workflow downloads a versioned script to a temporary file so
+you can inspect exactly what will run. Run it as your normal desktop user, not
+with `sudo`:
 
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+(
+  set -e
+  installer="$(mktemp)"
+  trap 'rm -f "$installer"' EXIT
+  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+    https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.1/scripts/bootstrap.sh \
+    --output "$installer"
+  printf '%s  %s\n' \
+    9f29020e0b6810b61afc3ff8f3c22d6e565bf9e60757096ead5f51bcc7454e1b \
+    "$installer" | sha256sum --check -
+  less "$installer"
+  bash "$installer"
+)
 ```
 
-Install distribution libraries first:
+The command verifies the downloaded script before displaying or executing it.
+The installer then prints its detected distribution, exact package commands,
+app version, udev choice, and Background service choice before asking to
+continue. It supports automatic dependency installation on:
+
+- Ubuntu 22.04+, Debian 12+, Linux Mint, and compatible derivatives.
+- Fedora and compatible derivatives.
+- Arch Linux and compatible derivatives.
+
+For a shorter interactive form after you trust the versioned source URL:
+
+```bash
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+  https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.1/scripts/bootstrap.sh | bash
+```
+
+The script reads confirmation from the terminal even when its source arrives on
+standard input. For unattended use, add `bash -s -- --yes` only after reviewing
+the plan and script.
+
+### What the bootstrap does
+
+1. Refuses root execution and non-Linux hosts.
+2. Reads `/etc/os-release` and selects a supported package manager.
+3. Checks that the requested systemd user manager and udev tools are available.
+4. Shows all planned system changes and asks for confirmation.
+5. Installs the distribution's HID and Qt runtime libraries.
+6. Uses an existing `uv`, or downloads pinned `uv 0.11.29` and verifies its
+   embedded SHA-256 checksum before execution.
+7. Downloads the pinned Vaydeer Studio source archive and verifies it against
+   the release's `SHA256SUMS` file.
+8. Installs the application, desktop integration, scoped udev rule, and
+   per-user Background service through `scripts/install.sh`.
+9. Deletes temporary installer and source files.
+
+The script uses HTTPS-only redirects, fails on HTTP errors, retries transient
+downloads, never uses `eval`, and executes package-manager commands as argument
+arrays. `sudo` is limited to system packages and the udev rule. The application,
+CLI, and Background service run as the desktop user.
+
+## Installer Options
+
+Pass options after `bash -s --` when piping:
+
+```bash
+curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+  https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.1/scripts/bootstrap.sh \
+  | bash -s -- --no-service
+```
+
+| Option | Effect |
+| --- | --- |
+| `--yes` | Accept the displayed plan without an interactive prompt. |
+| `--no-deps` | Skip distribution package installation. Required on unsupported distributions after installing dependencies manually. |
+| `--no-udev` | Skip the root-owned device permission rule. Physical hardware access may fail. |
+| `--no-service` | Skip the Background service. Linux actions and automatic keepalive are unavailable after Studio closes. |
+| `--print-plan` | Detect the host and print the plan without downloading or changing anything. |
+
+Options can be combined. Use `--no-service` for a non-systemd desktop session
+and `--no-udev` where device permissions are centrally administered.
+
+## Manual Installation
+
+Install distribution libraries:
 
 ```bash
 # Ubuntu 22.04+, Debian 12+, Linux Mint
-sudo apt update
-sudo apt install libhidapi-hidraw0 libegl1 libgl1
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl libhidapi-hidraw0 libegl1 libgl1 \
+  libxcb-cursor0 libxkbcommon-x11-0
 
 # Fedora
-sudo dnf install hidapi libglvnd-egl libglvnd-glx
+sudo dnf install -y ca-certificates curl hidapi libglvnd-egl libglvnd-glx \
+  xcb-util-cursor libxkbcommon-x11
 
 # Arch Linux
-sudo pacman -S hidapi mesa libglvnd
+sudo pacman -S --needed ca-certificates curl hidapi mesa libglvnd \
+  xcb-util-cursor libxkbcommon-x11
 ```
 
-Then install from GitHub:
+Install the same pinned [uv](https://docs.astral.sh/uv/getting-started/installation/)
+release used by the bootstrap, then install from GitHub:
 
 ```bash
+(
+  set -e
+  uv_installer="$(mktemp)"
+  trap 'rm -f "$uv_installer"' EXIT
+  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
+    https://github.com/astral-sh/uv/releases/download/0.11.29/uv-installer.sh \
+    --output "$uv_installer"
+  printf '%s  %s\n' \
+    504a79fd2ed0dcd47e7f04f0792cfd0871f62e24a7fe40fa8ae0f563a369f2bd \
+    "$uv_installer" | sha256sum --check -
+  less "$uv_installer"
+  env UV_NO_MODIFY_PATH=1 sh "$uv_installer"
+)
 git clone https://github.com/callum-baillie/vaydeer-studio-linux.git
 cd vaydeer-studio-linux
 ./scripts/install.sh
@@ -68,7 +164,7 @@ interface, normal-user access, service socket, and a safe device-information
 read. It never sends configuration writes or firmware commands. A fully ready
 result reports `root_cause: ready`.
 
-## Install Options
+## Source Installer Options
 
 Install the desktop app without changing root-owned udev configuration:
 
@@ -98,8 +194,9 @@ group rule. Do not broaden access to every hidraw device.
 
 ## Update
 
-The installer is idempotent and replaces the isolated tool environment and
-integration files:
+The bootstrap and source installers are idempotent. To update from a release,
+run the versioned installer shown in that release's README. To update from a
+checkout:
 
 ```bash
 git pull --ff-only
@@ -140,6 +237,7 @@ the platform's Qt user configuration location.
 
 ## Package Status
 
-`make package` builds and smoke-tests the wheel and source archive. These are
-the supported v1 release artifacts. Native AppImage, Debian, RPM, and Flatpak
-bundles are not released; see [../packaging/README.md](../packaging/README.md).
+`make package` builds and smoke-tests the wheel and source archive, then writes
+their hashes to `dist/SHA256SUMS`. These are the supported v1 release artifacts.
+Native AppImage, Debian, RPM, and Flatpak bundles are not released; see
+[../packaging/README.md](../packaging/README.md).

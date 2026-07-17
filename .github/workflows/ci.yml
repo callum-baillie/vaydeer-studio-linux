@@ -39,6 +39,9 @@ jobs:
       - name: Test isolated user installation
         if: matrix.python-version == '3.11'
         run: ./scripts/test-install.sh
+      - name: Test bootstrap distribution plans
+        if: matrix.python-version == '3.11'
+        run: ./scripts/test-bootstrap.sh
       - name: Validate release resources
         run: ./scripts/check-docs.sh
       - name: Qt mock smoke test

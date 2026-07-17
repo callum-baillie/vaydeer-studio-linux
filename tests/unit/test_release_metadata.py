@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import tomllib
 from pathlib import Path
@@ -15,9 +16,18 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_release_version_and_urls_are_consistent() -> None:
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-    assert metadata["version"] == __version__ == "1.0.0"
+    assert metadata["version"] == __version__ == "1.0.1"
     assert metadata["urls"]["Repository"] == "https://github.com/callum-baillie/vaydeer-studio-linux"
     assert "--version" in build_parser().format_help()
+
+    bootstrap_bytes = (ROOT / "scripts/bootstrap.sh").read_bytes()
+    bootstrap = bootstrap_bytes.decode("utf-8")
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert 'readonly STUDIO_VERSION="1.0.1"' in bootstrap
+    assert "/releases/download/v${STUDIO_VERSION}" in bootstrap
+    assert "UV_INSTALLER_SHA256=" in bootstrap
+    assert "/v1.0.1/scripts/bootstrap.sh" in readme
+    assert hashlib.sha256(bootstrap_bytes).hexdigest() in readme
 
 
 def test_host_integration_is_scoped_and_distribution_neutral() -> None:
