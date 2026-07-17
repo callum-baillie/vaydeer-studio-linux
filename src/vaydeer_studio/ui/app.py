@@ -33,7 +33,8 @@ def main(argv: list[str] | None = None) -> int:
     application = QGuiApplication([sys.argv[0], *qt_args])
     engine = QQmlApplicationEngine()
     controller = StudioController(mock=args.mock == "jp1011")
-    window_state = WindowState()
+    # Smoke validation must not resize the user's next real Studio window.
+    window_state = WindowState(enabled=False if args.smoke else None)
     # Context properties do not retain Python wrappers while Qt owns the event loop.
     _controller_refs.append(controller)
     _window_state_refs.append(window_state)

@@ -1,8 +1,8 @@
 """Tests for safe window geometry restoration."""
 
-from PySide6.QtCore import QRect, QSize
+from PySide6.QtCore import QRect, QSettings, QSize
 
-from vaydeer_studio.ui.window_state import WindowGeometry, clamp_window_geometry
+from vaydeer_studio.ui.window_state import WindowGeometry, WindowState, clamp_window_geometry
 
 
 def test_missing_geometry_uses_a_centered_fitting_default() -> None:
@@ -46,3 +46,33 @@ def test_geometry_stays_on_the_matching_secondary_display() -> None:
     )
 
     assert geometry == WindowGeometry(2100, 40, 1000, 700)
+
+
+def test_legacy_client_geometry_is_ignored(tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "window.ini"), QSettings.Format.IniFormat)
+    settings.beginGroup("window")
+    settings.setValue("width", 1031)
+    settings.setValue("height", 1037)
+    settings.setValue("x", 2)
+    settings.setValue("y", 41)
+    settings.endGroup()
+    state = WindowState(enabled=True, settings=settings)
+
+    assert state._load_geometry() is None
+    assert state._load_maximized() is False
+
+
+def test_current_frame_geometry_is_loaded(tmp_path) -> None:
+    settings = QSettings(str(tmp_path / "window.ini"), QSettings.Format.IniFormat)
+    settings.beginGroup("window")
+    settings.setValue("version", 2)
+    settings.setValue("width", 1282)
+    settings.setValue("height", 831)
+    settings.setValue("x", 240)
+    settings.setValue("y", 120)
+    settings.setValue("maximized", True)
+    settings.endGroup()
+    state = WindowState(enabled=True, settings=settings)
+
+    assert state._load_geometry() == WindowGeometry(240, 120, 1282, 831)
+    assert state._load_maximized() is True

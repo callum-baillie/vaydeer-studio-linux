@@ -6,7 +6,7 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from PySide6.QtCore import QObject, QRect, QSettings, QSize, QTimer, Slot
+from PySide6.QtCore import QObject, QPoint, QRect, QSettings, QSize, QTimer, Slot
 from PySide6.QtGui import QGuiApplication, QWindow
 
 DEFAULT_WINDOW_SIZE = QSize(1280, 800)
@@ -23,6 +23,10 @@ class WindowGeometry:
 
     def rect(self) -> QRect:
         return QRect(self.x, self.y, self.width, self.height)
+
+    @classmethod
+    def from_rect(cls, rect: QRect) -> WindowGeometry:
+        return cls(rect.x(), rect.y(), rect.width(), rect.height())
 
 
 def clamp_window_geometry(
@@ -79,12 +83,14 @@ class WindowState(QObject):
     """Restore and persist main-window placement without reopening off-screen."""
 
     _DEFAULT_SIZE = DEFAULT_WINDOW_SIZE
+    _GEOMETRY_VERSION = 2
+    _RESTORE_DELAY_MS = 50
     _SAVE_DELAY_MS = 250
 
-    def __init__(self, *, enabled: bool | None = None) -> None:
+    def __init__(self, *, enabled: bool | None = None, settings: QSettings | None = None) -> None:
         super().__init__()
         self._enabled = enabled if enabled is not None else os.environ.get("VAYDEER_STUDIO_DISABLE_WINDOW_STATE") != "1"
-        self._settings = QSettings()
+        self._settings = settings or QSettings()
         self._normal_geometries: dict[int, WindowGeometry] = {}
         self._save_timers: dict[int, QTimer] = {}
 
@@ -95,19 +101,17 @@ class WindowState(QObject):
         if not isinstance(window_object, QWindow):
             return
         if self._enabled:
-            geometry = clamp_window_geometry(
-                self._load_geometry(),
-                [screen.availableGeometry() for screen in QGuiApplication.screens()],
-                window_object.minimumSize(),
-                self._DEFAULT_SIZE,
+            saved_geometry = self._load_geometry()
+            self._set_pre_show_size(window_object, saved_geometry)
+            restore_maximized = self._load_maximized()
+            window_object.show()
+            QTimer.singleShot(
+                self._RESTORE_DELAY_MS,
+                lambda target=window_object, saved=saved_geometry, maximized=restore_maximized: self._finish_restore(
+                    target, saved, maximized
+                ),
             )
-            window_object.resize(geometry.width, geometry.height)
-            window_object.setPosition(geometry.x, geometry.y)
-            self._normal_geometries[id(window_object)] = geometry
-            self._connect_window(window_object)
-            if self._load_maximized():
-                window_object.showMaximized()
-                return
+            return
         window_object.show()
 
     @Slot(QObject)
@@ -117,18 +121,22 @@ class WindowState(QObject):
         if not self._enabled or not isinstance(window_object, QWindow):
             return
         identifier = id(window_object)
-        maximized = window_object.visibility() == QWindow.Visibility.Maximized
+        visibility = window_object.visibility()
+        if visibility == QWindow.Visibility.Minimized:
+            return
+        maximized = visibility == QWindow.Visibility.Maximized
         if not maximized:
-            self._normal_geometries[identifier] = WindowGeometry(
-                window_object.x(),
-                window_object.y(),
-                window_object.width(),
-                window_object.height(),
+            self._normal_geometries[identifier] = clamp_window_geometry(
+                WindowGeometry.from_rect(window_object.frameGeometry()),
+                self._available_geometries(),
+                self._minimum_frame_size(window_object),
+                self._default_frame_size(window_object),
             )
         geometry = self._normal_geometries.get(identifier)
         if geometry is None:
             return
         self._settings.beginGroup("window")
+        self._settings.setValue("version", self._GEOMETRY_VERSION)
         self._settings.setValue("x", geometry.x)
         self._settings.setValue("y", geometry.y)
         self._settings.setValue("width", geometry.width)
@@ -136,6 +144,59 @@ class WindowState(QObject):
         self._settings.setValue("maximized", maximized)
         self._settings.endGroup()
         self._settings.sync()
+
+    def _set_pre_show_size(self, window: QWindow, saved: WindowGeometry | None) -> None:
+        available = self._available_geometries()
+        if saved is not None:
+            geometry = clamp_window_geometry(saved, available, window.minimumSize(), self._DEFAULT_SIZE)
+            window.resize(geometry.width, geometry.height)
+            return
+
+        screen = QGuiApplication.primaryScreen()
+        if screen is None:
+            window.resize(self._DEFAULT_SIZE)
+            return
+        desktop = screen.availableGeometry()
+        width = min(self._DEFAULT_SIZE.width(), max(window.minimumWidth(), desktop.width() - 96))
+        height = min(self._DEFAULT_SIZE.height(), max(window.minimumHeight(), desktop.height() - 96))
+        window.resize(width, height)
+
+    def _finish_restore(self, window: QWindow, saved: WindowGeometry | None, maximized: bool) -> None:
+        if not window.isVisible():
+            return
+        current = WindowGeometry.from_rect(window.frameGeometry())
+        geometry = clamp_window_geometry(
+            saved or current,
+            self._available_geometries(),
+            self._minimum_frame_size(window),
+            self._default_frame_size(window),
+        )
+        margins = window.frameMargins()
+        client_width = max(window.minimumWidth(), geometry.width - margins.left() - margins.right())
+        client_height = max(window.minimumHeight(), geometry.height - margins.top() - margins.bottom())
+        window.resize(client_width, client_height)
+        window.setFramePosition(QPoint(geometry.x, geometry.y))
+        self._normal_geometries[id(window)] = geometry
+        self._connect_window(window)
+        if maximized:
+            window.showMaximized()
+
+    def _available_geometries(self) -> list[QRect]:
+        return [screen.availableGeometry() for screen in QGuiApplication.screens()]
+
+    def _minimum_frame_size(self, window: QWindow) -> QSize:
+        margins = window.frameMargins()
+        return QSize(
+            window.minimumWidth() + margins.left() + margins.right(),
+            window.minimumHeight() + margins.top() + margins.bottom(),
+        )
+
+    def _default_frame_size(self, window: QWindow) -> QSize:
+        margins = window.frameMargins()
+        return QSize(
+            self._DEFAULT_SIZE.width() + margins.left() + margins.right(),
+            self._DEFAULT_SIZE.height() + margins.top() + margins.bottom(),
+        )
 
     def _connect_window(self, window: QWindow) -> None:
         identifier = id(window)
@@ -158,18 +219,22 @@ class WindowState(QObject):
 
     def _load_geometry(self) -> WindowGeometry | None:
         self._settings.beginGroup("window")
+        version = self._integer_value("version")
         width = self._integer_value("width")
         height = self._integer_value("height")
         x = self._integer_value("x")
         y = self._integer_value("y")
         self._settings.endGroup()
-        if width <= 0 or height <= 0:
+        if version != self._GEOMETRY_VERSION or width <= 0 or height <= 0:
             return None
         return WindowGeometry(x, y, width, height)
 
     def _load_maximized(self) -> bool:
         self._settings.beginGroup("window")
-        maximized = bool(self._settings.value("maximized", False, type=bool))
+        version = self._integer_value("version")
+        maximized = version == self._GEOMETRY_VERSION and bool(
+            self._settings.value("maximized", False, type=bool)
+        )
         self._settings.endGroup()
         return maximized
 

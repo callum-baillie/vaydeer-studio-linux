@@ -86,3 +86,37 @@ the scope of this polish pass and remain unchanged.
   test pass.
 - Full undo/redo history for profile drafts. The current discard-to-device
   baseline path remains the reliable recovery mechanism.
+
+## Window and responsive follow-up
+
+The 0.1.17 follow-up used fresh mock captures at 1280x720 and 960x620 plus a
+native X11/LXQt launch on a 1920x1080 display with 1920x1039 usable geometry.
+
+### Problems confirmed
+
+- The first geometry implementation stored QWindow client dimensions. The
+  observed 1031x1037 client rectangle did not include the native title bar and
+  borders, so restoring it could place the decorated frame below the usable
+  desktop.
+- The application also set an initial position before the Linux window manager
+  had created the native frame, overriding normal desktop placement behavior.
+- On-device keys, Linux actions, and Help had content below the viewport but
+  relied on implicit ScrollView sizing, leaving the lower content clipped with
+  no visible scroll affordance.
+- At 960x620, Live Tester controls overlapped the event count and its empty-state
+  copy exceeded the available panel width. The on-device layout title also
+  competed horizontally with its state legend.
+
+### Fixes verified
+
+- Window state now has a versioned frame-geometry schema. Legacy client-only
+  values are ignored. New windows are sized conservatively and positioned by
+  the window manager; saved frames are restored only after native decorations
+  exist and are clamped to current usable displays.
+- A native restore of a saved 1100x730 frame at 200,120 produced the expected
+  1098x697 client area and retained the requested outer-frame placement.
+- All long pages share one keyboard-accessible Flickable and visible scrollbar.
+  The minimum-size GUI test proves lower content is reachable on On-device
+  keys, Linux actions, Profiles, and Help.
+- Live Tester uses a two-row event header at narrow widths, constrains empty
+  copy to the panel, and the on-device legend now sits below its heading.

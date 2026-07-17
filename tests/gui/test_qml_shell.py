@@ -68,26 +68,43 @@ def test_qml_shell_switches_modes_and_keeps_the_app_bar_visible(qtbot, monkeypat
     assert target_field.property("color").name() == "#18242d"
     assert target_field.property("placeholderTextColor").name() == "#687b87"
 
-    window.setProperty("width", 1_280)
-    window.setProperty("height", 720)
+    window.setProperty("width", 960)
+    window.setProperty("height", 620)
     qtbot.wait(50)
     assert app_bar.property("height") == 64
 
-    window.setProperty("navIndex", 3)
-    qtbot.waitUntil(lambda: pages.property("currentIndex") == 3, timeout=2_000)
-    profiles_scroll = window.findChild(QObject, "profilesScroll")
-    profiles_scroll_bar = window.findChild(QObject, "profilesScrollBar")
-    assert profiles_scroll is not None
-    assert profiles_scroll_bar is not None
-    qtbot.waitUntil(
-        lambda: profiles_scroll.property("contentHeight") > profiles_scroll.property("height"),
-        timeout=2_000,
-    )
-    assert profiles_scroll_bar.property("visible") is True
-    profiles_scroll.setProperty(
-        "contentY",
-        profiles_scroll.property("contentHeight") - profiles_scroll.property("height"),
-    )
-    qtbot.waitUntil(lambda: profiles_scroll.property("contentY") > 0, timeout=2_000)
+    for page_index, scroll_name, scroll_bar_name in (
+        (1, "mappingsScroll", "mappingsScrollBar"),
+        (2, "bindingsScroll", "bindingsScrollBar"),
+        (3, "profilesScroll", "profilesScrollBar"),
+        (7, "helpScroll", "helpScrollBar"),
+    ):
+        window.setProperty("navIndex", page_index)
+        qtbot.waitUntil(lambda expected=page_index: pages.property("currentIndex") == expected, timeout=2_000)
+        page_scroll = window.findChild(QObject, scroll_name)
+        page_scroll_bar = window.findChild(QObject, scroll_bar_name)
+        assert page_scroll is not None
+        assert page_scroll_bar is not None
+        qtbot.waitUntil(
+            lambda target=page_scroll: target.property("contentHeight") > target.property("height"),
+            timeout=2_000,
+        )
+        assert page_scroll_bar.property("visible") is True
+        page_scroll.setProperty(
+            "contentY",
+            page_scroll.property("contentHeight") - page_scroll.property("height"),
+        )
+        qtbot.waitUntil(lambda target=page_scroll: target.property("contentY") > 0, timeout=2_000)
+
+    window.setProperty("navIndex", 4)
+    qtbot.waitUntil(lambda: pages.property("currentIndex") == 4, timeout=2_000)
+    tester_event_header = window.findChild(QObject, "testerEventHeader")
+    tester_event_controls = window.findChild(QObject, "testerEventControls")
+    tester_empty_state = window.findChild(QObject, "testerEmptyState")
+    assert tester_event_header is not None
+    assert tester_event_controls is not None
+    assert tester_empty_state is not None
+    assert tester_event_controls.property("y") > 0
+    assert tester_empty_state.property("width") <= tester_empty_state.parent().property("width")
 
     window.close()

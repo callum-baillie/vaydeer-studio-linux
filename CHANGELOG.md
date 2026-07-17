@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.17 - 2026-07-16
+
+- Restore versioned, decorated window-frame geometry after the native window
+  manager has created the frame. Legacy client-only geometry is ignored, new
+  windows use the window manager's placement, and restored frames are clamped
+  to the current usable displays.
+- Prevent smoke and screenshot validation from changing the user's saved
+  window state.
+- Give every long page a consistent visible scrollbar and keyboard Page Up,
+  Page Down, Home, and End navigation at constrained window heights.
+- Fix Live Tester header and empty-state clipping and keep the on-device layout
+  heading readable at the supported minimum window size.
+
 ## 0.1.16 - 2026-07-16
 
 - Persist normal window size, location, and maximized state, while clamping a

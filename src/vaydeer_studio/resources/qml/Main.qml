@@ -282,7 +282,7 @@ ApplicationWindow {
         Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
         spacing: 6
         Label { text: parent.title; color: window.primaryText; font.pixelSize: 16; font.bold: true; Layout.alignment: Qt.AlignHCenter }
-        Label { text: parent.body; color: window.secondaryText; font.pixelSize: 13; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; Layout.alignment: Qt.AlignHCenter; Layout.maximumWidth: 420 }
+        Label { text: parent.body; color: window.secondaryText; font.pixelSize: 13; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; Layout.alignment: Qt.AlignHCenter; Layout.fillWidth: true; Layout.maximumWidth: 420 }
     }
 
     component PrimaryButton: Button {
@@ -350,6 +350,52 @@ ApplicationWindow {
             color: parent.enabled ? window.inputBackground : window.inputDisabledBackground
             border.width: parent.activeFocus ? 2 : 1
             border.color: parent.activeFocus ? window.accent : window.border
+        }
+    }
+
+    component PageScrollBar: ScrollBar {
+        id: pageScrollBar
+        policy: ScrollBar.AlwaysOn
+        visible: size < 0.999
+        implicitWidth: 10
+        contentItem: Rectangle {
+            implicitWidth: 6
+            radius: 3
+            color: pageScrollBar.pressed ? window.accent : window.secondaryText
+            opacity: pageScrollBar.pressed || pageScrollBar.hovered ? 0.9 : 0.65
+        }
+        background: Rectangle {
+            implicitWidth: 10
+            color: "transparent"
+        }
+    }
+
+    component PageFlickable: Flickable {
+        id: pageFlickable
+        property string scrollBarObjectName: ""
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        activeFocusOnTab: true
+        Accessible.role: Accessible.Pane
+        ScrollBar.vertical: PageScrollBar {
+            objectName: pageFlickable.scrollBarObjectName
+        }
+        Keys.onPressed: function(event) {
+            const maximumY = Math.max(0, contentHeight - height)
+            if (event.key === Qt.Key_PageDown) {
+                contentY = Math.min(maximumY, contentY + height * 0.8)
+                event.accepted = true
+            } else if (event.key === Qt.Key_PageUp) {
+                contentY = Math.max(0, contentY - height * 0.8)
+                event.accepted = true
+            } else if (event.key === Qt.Key_Home) {
+                contentY = 0
+                event.accepted = true
+            } else if (event.key === Qt.Key_End) {
+                contentY = maximumY
+                event.accepted = true
+            }
         }
     }
 
@@ -780,11 +826,16 @@ ApplicationWindow {
 
                 // Overview
                 Item {
-                    ScrollView {
+                    PageFlickable {
+                        id: overviewScroll
+                        objectName: "overviewScroll"
+                        scrollBarObjectName: "overviewScrollBar"
                         anchors.fill: parent
-                        contentWidth: availableWidth
-                        clip: true
+                        contentWidth: width
+                        contentHeight: Math.max(height, overviewContent.implicitHeight + 48)
+                        Accessible.name: "Overview page content"
                         ColumnLayout {
+                            id: overviewContent
                             width: Math.max(0, parent.width - 56)
                             x: 28
                             y: 24
@@ -915,11 +966,16 @@ ApplicationWindow {
 
                 // On-device mappings
                 Item {
-                    ScrollView {
+                    PageFlickable {
+                        id: mappingsScroll
+                        objectName: "mappingsScroll"
+                        scrollBarObjectName: "mappingsScrollBar"
                         anchors.fill: parent
-                        contentWidth: availableWidth
-                        clip: true
+                        contentWidth: width
+                        contentHeight: Math.max(height, mappingsContent.implicitHeight + 40)
+                        Accessible.name: "On-device keys page content"
                         ColumnLayout {
+                            id: mappingsContent
                             width: Math.max(0, parent.width - 48)
                             x: 24
                             y: 20
@@ -1018,7 +1074,7 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: 16
                                         spacing: 10
-                                        RowLayout {
+                                        ColumnLayout {
                                             Layout.fillWidth: true
                                             SectionTitle { text: "JP-1011 physical layout"; hint: "Vendor indexes follow reading order: top-left is key 1, bottom-right is key 9." }
                                             RowLayout {
@@ -1309,11 +1365,16 @@ ApplicationWindow {
 
                 // Linux bindings
                 Item {
-                    ScrollView {
+                    PageFlickable {
+                        id: bindingsScroll
+                        objectName: "bindingsScroll"
+                        scrollBarObjectName: "bindingsScrollBar"
                         anchors.fill: parent
-                        contentWidth: availableWidth
-                        clip: true
+                        contentWidth: width
+                        contentHeight: Math.max(height, bindingsContent.implicitHeight + 40)
+                        Accessible.name: "Linux actions page content"
                         ColumnLayout {
+                            id: bindingsContent
                             width: Math.max(0, parent.width - 48)
                             x: 24
                             y: 20
@@ -1527,7 +1588,7 @@ ApplicationWindow {
                                             visible: vaydeerBridge.bindings.length === 0
                                             width: bindingsList.width
                                             height: 118
-                                            EmptyState { anchors.centerIn: parent; title: "No Linux actions yet"; body: "Choose a keypad key, select an action type, then save it for this Linux computer." }
+                                            EmptyState { objectName: "bindingsEmptyState"; anchors.centerIn: parent; width: Math.max(0, parent.width - 24); title: "No Linux actions yet"; body: "Choose a keypad key, select an action type, then save it for this Linux computer." }
                                         }
                                     }
                                 }
@@ -1538,31 +1599,14 @@ ApplicationWindow {
 
                 // Profiles
                 Item {
-                    Flickable {
+                    PageFlickable {
                         id: profilesScroll
                         objectName: "profilesScroll"
+                        scrollBarObjectName: "profilesScrollBar"
                         anchors.fill: parent
                         contentWidth: width
-                        contentHeight: profilesContent.implicitHeight + 40
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-                        flickableDirection: Flickable.VerticalFlick
-                        ScrollBar.vertical: ScrollBar {
-                            id: profilesScrollBar
-                            objectName: "profilesScrollBar"
-                            policy: ScrollBar.AlwaysOn
-                            implicitWidth: 10
-                            contentItem: Rectangle {
-                                implicitWidth: 6
-                                radius: 3
-                                color: profilesScrollBar.pressed ? window.accent : window.secondaryText
-                                opacity: profilesScrollBar.pressed || profilesScrollBar.hovered ? 0.9 : 0.65
-                            }
-                            background: Rectangle {
-                                implicitWidth: 10
-                                color: "transparent"
-                            }
-                        }
+                        contentHeight: Math.max(height, profilesContent.implicitHeight + 40)
+                        Accessible.name: "Profiles page content"
                         ColumnLayout {
                             id: profilesContent
                             width: Math.max(0, parent.width - 48)
@@ -1841,20 +1885,32 @@ ApplicationWindow {
                                 anchors.fill: parent
                                 anchors.margins: 14
                                 spacing: 8
-                                RowLayout {
+                                ColumnLayout {
+                                    id: testerEventHeader
+                                    objectName: "testerEventHeader"
                                     Layout.fillWidth: true
-                                    Label { text: "Event history"; color: window.ink; font.bold: true; font.pixelSize: 17; Layout.fillWidth: true }
-                                    Label { text: vaydeerBridge.testerEvents.length + " events"; color: window.muted; font.pixelSize: 12 }
-                                    SecondaryButton {
-                                        text: testerPage.paused ? "Start listening" : "Pause"
-                                        onClicked: {
-                                            testerPage.paused = !testerPage.paused
-                                            vaydeerBridge.setTesterOpen(!testerPage.paused)
-                                        }
+                                    spacing: 6
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "Event history"; color: window.ink; font.bold: true; font.pixelSize: 17; Layout.fillWidth: true }
+                                        Label { text: vaydeerBridge.testerEvents.length + " events"; color: window.muted; font.pixelSize: 12 }
                                     }
-                                    SecondaryButton { text: "Clear"; enabled: vaydeerBridge.testerEvents.length > 0; onClicked: { testerPage.selectedEventIndex = -1; vaydeerBridge.clearTesterEvents() } }
-                                    SecondaryButton { text: "Copy"; enabled: testerPage.selectedEventIndex >= 0; onClicked: vaydeerBridge.copyTesterEvent(testerPage.selectedEventIndex) }
-                                    SecondaryButton { text: "Export"; enabled: vaydeerBridge.testerEvents.length > 0; onClicked: vaydeerBridge.exportTesterSession() }
+                                    RowLayout {
+                                        id: testerEventControls
+                                        objectName: "testerEventControls"
+                                        Layout.fillWidth: true
+                                        Item { Layout.fillWidth: true }
+                                        SecondaryButton {
+                                            text: testerPage.paused ? "Start listening" : "Pause"
+                                            onClicked: {
+                                                testerPage.paused = !testerPage.paused
+                                                vaydeerBridge.setTesterOpen(!testerPage.paused)
+                                            }
+                                        }
+                                        SecondaryButton { text: "Clear"; enabled: vaydeerBridge.testerEvents.length > 0; onClicked: { testerPage.selectedEventIndex = -1; vaydeerBridge.clearTesterEvents() } }
+                                        SecondaryButton { text: "Copy"; enabled: testerPage.selectedEventIndex >= 0; onClicked: vaydeerBridge.copyTesterEvent(testerPage.selectedEventIndex) }
+                                        SecondaryButton { text: "Export"; enabled: vaydeerBridge.testerEvents.length > 0; onClicked: vaydeerBridge.exportTesterSession() }
+                                    }
                                 }
                                 ListView {
                                     id: testerEventList
@@ -1893,7 +1949,7 @@ ApplicationWindow {
                                         visible: vaydeerBridge.testerEvents.length === 0
                                         width: testerEventList.width
                                         height: 150
-                                        EmptyState { anchors.centerIn: parent; title: "Press a keypad key to begin testing"; body: testerPage.paused ? "Start listening to see physical keypad events." : "Press and release events will appear here. Select an event to copy a readable summary." }
+                                        EmptyState { objectName: "testerEmptyState"; anchors.centerIn: parent; width: Math.max(0, parent.width - 24); title: "Press a keypad key to begin testing"; body: testerPage.paused ? "Start listening to see physical keypad events." : "Press and release events will appear here. Select an event to copy a readable summary." }
                                     }
                                 }
                             }
@@ -1904,11 +1960,16 @@ ApplicationWindow {
 
                 // Diagnostics
                 Item {
-                    ScrollView {
+                    PageFlickable {
+                        id: diagnosticsScroll
+                        objectName: "diagnosticsScroll"
+                        scrollBarObjectName: "diagnosticsScrollBar"
                         anchors.fill: parent
-                        contentWidth: availableWidth
-                        clip: true
+                        contentWidth: width
+                        contentHeight: Math.max(height, diagnosticsContent.implicitHeight + 48)
+                        Accessible.name: "Diagnostics page content"
                         ColumnLayout {
+                            id: diagnosticsContent
                             width: Math.max(0, parent.width - 56)
                             x: 28
                             y: 24
@@ -2000,11 +2061,16 @@ ApplicationWindow {
 
                 // Setup
                 Item {
-                    ScrollView {
+                    PageFlickable {
+                        id: setupScroll
+                        objectName: "setupScroll"
+                        scrollBarObjectName: "setupScrollBar"
                         anchors.fill: parent
-                        contentWidth: availableWidth
-                        clip: true
+                        contentWidth: width
+                        contentHeight: Math.max(height, setupContent.implicitHeight + 48)
+                        Accessible.name: "Setup page content"
                         ColumnLayout {
+                            id: setupContent
                             width: Math.max(0, parent.width - 56)
                             x: 28
                             y: 24
@@ -2093,11 +2159,16 @@ ApplicationWindow {
 
                 // Help
                 Item {
-                    ScrollView {
+                    PageFlickable {
+                        id: helpScroll
+                        objectName: "helpScroll"
+                        scrollBarObjectName: "helpScrollBar"
                         anchors.fill: parent
-                        contentWidth: availableWidth
-                        clip: true
+                        contentWidth: width
+                        contentHeight: Math.max(height, helpContent.implicitHeight + 48)
+                        Accessible.name: "Help page content"
                         ColumnLayout {
+                            id: helpContent
                             width: Math.max(0, parent.width - 56)
                             x: 28
                             y: 24
