@@ -21,10 +21,10 @@ appdir="$build_dir/VaydeerStudio.AppDir"
 tool="$build_dir/appimagetool-x86_64.AppImage"
 runtime="$build_dir/runtime-x86_64"
 output="$root/dist/Vaydeer_Studio-x86_64.AppImage"
-python_bin="$(UV_PYTHON_PREFERENCE=only-managed uv python find 3.11 2>/dev/null || true)"
+python_bin="$(uv python find --managed-python --no-project 3.11 2>/dev/null || true)"
 if [[ -z "$python_bin" ]]; then
-  UV_PYTHON_PREFERENCE=only-managed uv python install 3.11
-  python_bin="$(UV_PYTHON_PREFERENCE=only-managed uv python find 3.11)"
+  uv python install 3.11
+  python_bin="$(uv python find --managed-python --no-project 3.11)"
 fi
 python_root="$(CDPATH= cd -- "$(dirname -- "$python_bin")/.." && pwd)"
 
