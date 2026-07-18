@@ -1,5 +1,7 @@
 # Vaydeer Studio
 
+<img src="src/vaydeer_studio/resources/icons/vaydeer-studio.svg" width="96" height="96" alt="Vaydeer Studio keypad logo">
+
 [![CI](https://github.com/callum-baillie/vaydeer-studio-linux/actions/workflows/ci.yml/badge.svg)](https://github.com/callum-baillie/vaydeer-studio-linux/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/callum-baillie/vaydeer-studio-linux)](https://github.com/callum-baillie/vaydeer-studio-linux/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
@@ -33,45 +35,16 @@ and verifies the result by reading it back.
 
 ## Install
 
-Vaydeer Studio uses an isolated per-user application environment. The install
-does not modify the system Python and does not depend on the source checkout
-after installation.
-
-### Recommended installer
-
-Download the versioned installer, inspect it, and run it as your normal desktop
-user. Do not run the script itself through `sudo`.
+Run this as your normal desktop user, not through `sudo`:
 
 ```bash
-(
-  set -e
-  installer="$(mktemp)"
-  trap 'rm -f "$installer"' EXIT
-  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-    https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.2/scripts/bootstrap.sh \
-    --output "$installer"
-  printf '%s  %s\n' \
-    1de1f5a319c83ec1e787b48ee86e477366c0b9a0a9e40a10956d25b90591ee9a \
-    "$installer" | sha256sum --check -
-  less "$installer"
-  bash "$installer"
-)
+curl -fsSL https://github.com/callum-baillie/vaydeer-studio-linux/releases/latest/download/install.sh | bash
 ```
 
-For a shorter interactive install after reviewing the source URL:
-
-```bash
-curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-  https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.2/scripts/bootstrap.sh | bash
-```
-
-The bootstrap detects Ubuntu/Debian, Fedora, Arch Linux, and common derivatives;
-shows the exact package-manager commands; and asks before changing anything. It
-installs required desktop/HID libraries, installs a pinned and checksummed `uv`
-when needed, verifies the Vaydeer Studio release archive against its published
-`SHA256SUMS`, and delegates to the per-user installer. `sudo` is used only for
-distribution packages and the narrowly scoped udev rule. Studio and its
-Background service never run as root.
+The installer detects Ubuntu/Debian, Fedora, Arch Linux, and common derivatives,
+shows its plan, and asks before changing anything. It uses `sudo` only for
+system libraries and the scoped udev rule. Studio, the CLI, and the Background
+service are installed per user and never run as root.
 
 Reconnect the keypad once after installation, then verify and launch:
 
@@ -81,8 +54,36 @@ Reconnect the keypad once after installation, then verify and launch:
 ```
 
 If `~/.local/bin` is already on `PATH`, use `vaydeer-studio` directly. See the
-[installation guide](docs/installation.md) for installer options, manual
-installation, updates, custom XDG paths, and repair instructions.
+[installation guide](docs/installation.md) to inspect or checksum the installer,
+pin a release, skip host integration, or uninstall.
+
+### Portable AppImage
+
+The x86_64 AppImage bundles Python, Qt, and Vaydeer Studio. It does not install
+the udev rule automatically; use **Setup** for the per-user Background service
+and follow the permissions guidance for physical hardware. It expects the
+standard Linux desktop runtime libraries listed in the installation guide.
+
+```bash
+curl -fLO https://github.com/callum-baillie/vaydeer-studio-linux/releases/latest/download/Vaydeer_Studio-x86_64.AppImage
+chmod +x Vaydeer_Studio-x86_64.AppImage
+./Vaydeer_Studio-x86_64.AppImage
+```
+
+### Build from source
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
+
+```bash
+git clone https://github.com/callum-baillie/vaydeer-studio-linux.git
+cd vaydeer-studio-linux
+uv sync --extra dev
+uv run vaydeer-studio --mock jp1011
+```
+
+Run `./scripts/install.sh` from the checkout for full desktop, udev, and
+Background service integration. Distribution dependencies and reproducible
+build commands are in [docs/installation.md](docs/installation.md).
 
 ## What Runs Where
 
@@ -179,8 +180,22 @@ firmware, and Live tester issues.
 
 ## Update and Uninstall
 
-To update, use the installer command from the release you want to install. From
-a checkout, update and reinstall with:
+Update by rerunning the same one-line installer:
+
+```bash
+curl -fsSL https://github.com/callum-baillie/vaydeer-studio-linux/releases/latest/download/install.sh | bash
+```
+
+Updates replace the isolated application environment, refresh desktop files,
+and restart the Background service. Profiles, backups, preferences, and keypad
+mappings are preserved. The updater never writes keypad mappings.
+
+To install or roll back to a specific release, replace `latest/download` with
+`download/v1.1.0` in the installer URL. AppImage users can download the stable
+filename again or use `appimageupdatetool`; update metadata is embedded in the
+bundle.
+
+From a source checkout:
 
 ```bash
 git pull --ff-only
@@ -199,11 +214,11 @@ their locations are documented in the [installation guide](docs/installation.md)
 
 ## Packages
 
-The validated v1 artifacts are a Python wheel, source archive, and
-`SHA256SUMS` manifest. The source installer uses `uv tool` and works
-independently of the distribution's Python package set. AppImage, native
-Debian, RPM, and Flatpak bundles are **not** released or claimed to work. Their
-host-integration constraints are documented in
+Each release contains the one-line installer, Python wheel, source archive,
+x86_64 AppImage with zsync update metadata, and `SHA256SUMS`. The installer is
+the recommended cross-distribution path because it can configure the host udev
+rule and user service safely. Native Debian, RPM, Arch, and Flatpak packages are
+not claimed until they have independent build and integration testing. See
 [packaging/README.md](packaging/README.md).
 
 ## Development
@@ -214,6 +229,8 @@ make lint
 make typecheck
 make test
 make build
+make package
+make appimage
 make docs
 make install-smoke
 ```

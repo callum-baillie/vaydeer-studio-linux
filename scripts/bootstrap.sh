@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 umask 022
 
-readonly STUDIO_VERSION="1.0.2"
+readonly STUDIO_VERSION="1.1.0"
 readonly UV_VERSION="0.11.29"
 readonly UV_INSTALLER_SHA256="504a79fd2ed0dcd47e7f04f0792cfd0871f62e24a7fe40fa8ae0f563a369f2bd"
 readonly REPOSITORY="callum-baillie/vaydeer-studio-linux"
@@ -113,7 +113,7 @@ detect_distribution() {
   if distribution_matches debian ubuntu; then
     package_manager="apt"
     dependency_packages=(
-      ca-certificates curl libhidapi-hidraw0 libegl1 libgl1
+      ca-certificates curl fontconfig libdbus-1-3 libglib2.0-0 libhidapi-hidraw0 libegl1 libgl1
       libxcb-cursor0 libxkbcommon-x11-0
     )
     update_command=(sudo apt-get update)
@@ -121,7 +121,7 @@ detect_distribution() {
   elif distribution_matches fedora; then
     package_manager="dnf"
     dependency_packages=(
-      ca-certificates curl hidapi libglvnd-egl libglvnd-glx
+      ca-certificates curl dbus-libs fontconfig glib2 hidapi libglvnd-egl libglvnd-glx
       xcb-util-cursor libxkbcommon-x11
     )
     update_command=()
@@ -129,7 +129,7 @@ detect_distribution() {
   elif distribution_matches arch; then
     package_manager="pacman"
     dependency_packages=(
-      ca-certificates curl hidapi mesa libglvnd xcb-util-cursor libxkbcommon-x11
+      ca-certificates curl dbus fontconfig glib2 hidapi mesa libglvnd xcb-util-cursor libxkbcommon-x11
     )
     update_command=()
     install_command=(sudo pacman -S --needed --noconfirm "${dependency_packages[@]}")

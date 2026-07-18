@@ -33,7 +33,11 @@ for script in scripts/*.sh packaging/*/*.sh; do
   bash -n "$script"
 done
 if command -v desktop-file-validate >/dev/null 2>&1; then
-  desktop-file-validate packaging/desktop/vaydeer-studio.desktop
+  desktop-file-validate packaging/desktop/io.github.callumbaillie.vaydeer-studio.desktop
+fi
+if command -v appstreamcli >/dev/null 2>&1; then
+  appstreamcli validate --pedantic \
+    packaging/appimage/io.github.callumbaillie.vaydeer-studio.metainfo.xml
 fi
 if command -v systemd-analyze >/dev/null 2>&1; then
   service_tmp="$(mktemp --suffix=.service)"

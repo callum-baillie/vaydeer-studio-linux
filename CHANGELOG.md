@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0 - 2026-07-17
+
+- Make the primary installation and update path a stable one-line command using
+  the latest release's `install.sh` asset.
+- Add a minimal vector keypad logo with a red top-right key and use it for the
+  application window, desktop entry, source install, and portable package.
+- Add a portable, update-aware x86_64 AppImage build with Python 3.11,
+  PySide6, release checksums, CLI validation, and offscreen mock UI testing.
+- Add a tag-driven release workflow that validates version metadata, builds all
+  supported artifacts, and publishes them to GitHub Releases.
+- Restart the Background service after source-installer upgrades so the running
+  daemon always matches the newly installed Studio version.
+
 ## 1.0.2 - 2026-07-16
 
 - Fix `--no-deps` exiting immediately after the installation plan under strict

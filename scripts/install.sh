@@ -85,9 +85,11 @@ desktop_tmp="$(mktemp)"
 service_tmp="$(mktemp)"
 trap 'rm -f "$desktop_tmp" "$service_tmp"' EXIT
 escaped_studio="$(printf '%s' "$studio_exec" | sed 's/[\/&]/\\&/g')"
-sed "s/^Exec=.*/Exec=\"$escaped_studio\"/" packaging/desktop/vaydeer-studio.desktop >"$desktop_tmp"
-install -m 0644 "$desktop_tmp" "$applications_dir/vaydeer-studio.desktop"
-install -m 0644 packaging/desktop/vaydeer-studio.svg "$icons_dir/vaydeer-studio.svg"
+desktop_id="io.github.callumbaillie.vaydeer-studio"
+sed "s/^Exec=.*/Exec=\"$escaped_studio\"/" "packaging/desktop/$desktop_id.desktop" >"$desktop_tmp"
+rm -f "$applications_dir/vaydeer-studio.desktop"
+install -m 0644 "$desktop_tmp" "$applications_dir/$desktop_id.desktop"
+install -m 0644 src/vaydeer_studio/resources/icons/vaydeer-studio.svg "$icons_dir/vaydeer-studio.svg"
 install -m 0644 packaging/desktop/vaydeer-studio-profile.xml "$mime_dir/vaydeer-studio-profile.xml"
 
 if command -v update-mime-database >/dev/null 2>&1; then
@@ -107,7 +109,8 @@ if [[ "$install_service" == true ]]; then
     packaging/systemd/vaydeer-studio.service >"$service_tmp"
   install -m 0644 "$service_tmp" "$unit_dir/vaydeer-studio.service"
   systemctl --user daemon-reload
-  systemctl --user enable --now vaydeer-studio.service
+  systemctl --user enable vaydeer-studio.service
+  systemctl --user restart vaydeer-studio.service
 fi
 
 if [[ "$install_udev" == true ]]; then
@@ -120,7 +123,7 @@ echo
 "$cli_exec" --version
 echo "Installed Vaydeer Studio."
 if [[ "$install_service" == true ]]; then
-  echo "Background service: enabled and started for this user."
+  echo "Background service: enabled and started or restarted for this user."
 else
   echo "Background service: skipped. Linux actions and the automatic keepalive are unavailable."
 fi

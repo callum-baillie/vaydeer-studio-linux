@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" role="img" aria-label="Vaydeer Studio">
+  <rect x="24" y="24" width="208" height="208" rx="42" fill="#171D21"/>
+  <g fill="#E7ECEF">
+    <rect x="47" y="47" width="44" height="44" rx="8"/>
+    <rect x="106" y="47" width="44" height="44" rx="8"/>
+    <rect x="47" y="106" width="44" height="44" rx="8"/>
+    <rect x="106" y="106" width="44" height="44" rx="8"/>
+    <rect x="165" y="106" width="44" height="44" rx="8"/>
+    <rect x="47" y="165" width="44" height="44" rx="8"/>
+    <rect x="106" y="165" width="44" height="44" rx="8"/>
+    <rect x="165" y="165" width="44" height="44" rx="8"/>
+  </g>
+  <rect x="165" y="47" width="44" height="44" rx="8" fill="#E5484D"/>
+</svg>

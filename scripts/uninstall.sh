@@ -23,7 +23,9 @@ if [[ -e "$unit_path" ]] && command -v systemctl >/dev/null 2>&1; then
   had_unit=true
   systemctl --user disable --now vaydeer-studio.service 2>/dev/null || true
 fi
-rm -f "$data_home/applications/vaydeer-studio.desktop"
+rm -f \
+  "$data_home/applications/io.github.callumbaillie.vaydeer-studio.desktop" \
+  "$data_home/applications/vaydeer-studio.desktop"
 rm -f "$data_home/icons/hicolor/scalable/apps/vaydeer-studio.svg"
 rm -f "$data_home/mime/packages/vaydeer-studio-profile.xml"
 rm -f "$unit_path"

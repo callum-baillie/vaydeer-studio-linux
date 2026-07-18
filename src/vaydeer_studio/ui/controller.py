@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -414,7 +415,20 @@ class StudioController(QObject):
         """Install only the current user's service unit; udev remains explicit."""
 
         unit_path = self._user_service_unit_path()
-        executable = str(Path(sys.executable).resolve())
+        appimage = os.environ.get("APPIMAGE")
+        daemon_executable = shutil.which("vaydeer-studiod")
+        if appimage:
+            daemon_command = [str(Path(appimage).resolve()), "--daemon", "--log-level", "info"]
+        elif daemon_executable:
+            daemon_command = [daemon_executable, "--log-level", "info"]
+        else:
+            daemon_command = [
+                str(Path(sys.executable).resolve()),
+                "-m",
+                "vaydeer_studio.service.daemon",
+                "--log-level",
+                "info",
+            ]
         unit_contents = "\n".join(
             (
                 "[Unit]",
@@ -425,7 +439,7 @@ class StudioController(QObject):
                 "",
                 "[Service]",
                 "Type=simple",
-                f"ExecStart={executable} -m vaydeer_studio.service.daemon --log-level info",
+                f"ExecStart={shlex.join(daemon_command)}",
                 "Restart=on-failure",
                 "RestartSec=3",
                 "Environment=PYTHONUNBUFFERED=1",

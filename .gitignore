@@ -19,6 +19,7 @@ dist/
 *.egg-info/
 AppDir/
 *.AppImage
+*.AppImage.zsync
 *.deb
 *.flatpak
 *.rpm

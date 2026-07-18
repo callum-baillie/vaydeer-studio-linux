@@ -1,4 +1,4 @@
-.PHONY: setup run test lint typecheck build package install-smoke bootstrap-test docs clean
+.PHONY: setup run test lint typecheck build package appimage install-smoke bootstrap-test docs clean
 
 setup:
 	uv sync --extra dev
@@ -21,6 +21,9 @@ build:
 
 package:
 	./scripts/package.sh
+
+appimage: package
+	./packaging/appimage/build-appimage.sh
 
 install-smoke:
 	./scripts/test-install.sh

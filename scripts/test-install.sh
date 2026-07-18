@@ -18,7 +18,7 @@ test -x "$UV_TOOL_BIN_DIR/vaydeer-studio"
 test -x "$UV_TOOL_BIN_DIR/vaydeer-studio-cli"
 test -x "$UV_TOOL_BIN_DIR/vaydeer-studiod"
 grep -F "Exec=\"$UV_TOOL_BIN_DIR/vaydeer-studio\"" \
-  "$XDG_DATA_HOME/applications/vaydeer-studio.desktop" >/dev/null
+  "$XDG_DATA_HOME/applications/io.github.callumbaillie.vaydeer-studio.desktop" >/dev/null
 "$UV_TOOL_BIN_DIR/vaydeer-studio-cli" --version
 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
   "$UV_TOOL_BIN_DIR/vaydeer-studio" --mock jp1011 --smoke

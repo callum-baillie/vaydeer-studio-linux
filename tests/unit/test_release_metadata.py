@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 import tomllib
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -16,18 +16,42 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def test_release_version_and_urls_are_consistent() -> None:
     metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-    assert metadata["version"] == __version__ == "1.0.2"
+    assert metadata["version"] == __version__ == "1.1.0"
     assert metadata["urls"]["Repository"] == "https://github.com/callum-baillie/vaydeer-studio-linux"
     assert "--version" in build_parser().format_help()
 
-    bootstrap_bytes = (ROOT / "scripts/bootstrap.sh").read_bytes()
-    bootstrap = bootstrap_bytes.decode("utf-8")
+    bootstrap = (ROOT / "scripts/bootstrap.sh").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert 'readonly STUDIO_VERSION="1.0.2"' in bootstrap
+    assert 'readonly STUDIO_VERSION="1.1.0"' in bootstrap
     assert "/releases/download/v${STUDIO_VERSION}" in bootstrap
     assert "UV_INSTALLER_SHA256=" in bootstrap
-    assert "/v1.0.2/scripts/bootstrap.sh" in readme
-    assert hashlib.sha256(bootstrap_bytes).hexdigest() in readme
+    assert "/releases/latest/download/install.sh" in readme
+
+    appstream = ET.parse(ROOT / "packaging/appimage/io.github.callumbaillie.vaydeer-studio.metainfo.xml").getroot()
+    release = appstream.find("./releases/release")
+    assert release is not None
+    assert release.attrib["version"] == __version__
+    launchable = appstream.find("./launchable")
+    assert launchable is not None
+    assert launchable.text == "io.github.callumbaillie.vaydeer-studio.desktop"
+    assert (ROOT / f"packaging/desktop/{launchable.text}").is_file()
+
+    icon = ROOT / "src/vaydeer_studio/resources/icons/vaydeer-studio.svg"
+    assert icon.is_file()
+    assert 'fill="#E5484D"' in icon.read_text(encoding="utf-8")
+
+
+def test_release_scripts_stage_install_and_appimage_update_metadata() -> None:
+    package_script = (ROOT / "scripts/package.sh").read_text(encoding="utf-8")
+    appimage_script = (ROOT / "packaging/appimage/build-appimage.sh").read_text(encoding="utf-8")
+    checksum_script = (ROOT / "scripts/generate-checksums.sh").read_text(encoding="utf-8")
+
+    assert "scripts/bootstrap.sh dist/install.sh" in package_script
+    assert "gh-releases-zsync|callum-baillie|vaydeer-studio-linux|latest" in appimage_script
+    assert "AppImage update metadata was not generated" in appimage_script
+    assert "APPIMAGE_RUNTIME_SHA256" in appimage_script
+    assert '--runtime-file "$runtime"' in appimage_script
+    assert "! -name '.*'" in checksum_script
 
 
 def test_host_integration_is_scoped_and_distribution_neutral() -> None:

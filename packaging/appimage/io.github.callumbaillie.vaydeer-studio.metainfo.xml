@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.callumbaillie.vaydeer-studio</id>
+  <name>Vaydeer Studio</name>
+  <summary>Configure Vaydeer macro keypads on Linux</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="io.github.callumbaillie">
+    <name>Vaydeer Studio contributors</name>
+  </developer>
+  <description>
+    <p>
+      Vaydeer Studio reads and edits supported onboard keypad mappings, manages
+      Linux-only actions, and maintains the JP-1011 Linux HID keepalive.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.callumbaillie.vaydeer-studio.desktop</launchable>
+  <url type="homepage">https://github.com/callum-baillie/vaydeer-studio-linux</url>
+  <url type="bugtracker">https://github.com/callum-baillie/vaydeer-studio-linux/issues</url>
+  <provides>
+    <binary>vaydeer-studio</binary>
+  </provides>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="1.1.0" date="2026-07-17"/>
+  </releases>
+</component>

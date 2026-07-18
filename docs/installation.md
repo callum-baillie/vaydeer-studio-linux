@@ -14,45 +14,42 @@ sources are removed after a successful install.
 
 ## Recommended Install
 
-The recommended workflow downloads a versioned script to a temporary file so
-you can inspect exactly what will run. Run it as your normal desktop user, not
-with `sudo`:
+Run the latest release installer as your normal desktop user, not with `sudo`:
 
 ```bash
-(
-  set -e
-  installer="$(mktemp)"
-  trap 'rm -f "$installer"' EXIT
-  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-    https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.2/scripts/bootstrap.sh \
-    --output "$installer"
-  printf '%s  %s\n' \
-    1de1f5a319c83ec1e787b48ee86e477366c0b9a0a9e40a10956d25b90591ee9a \
-    "$installer" | sha256sum --check -
-  less "$installer"
-  bash "$installer"
-)
+curl -fsSL https://github.com/callum-baillie/vaydeer-studio-linux/releases/latest/download/install.sh | bash
 ```
 
-The command verifies the downloaded script before displaying or executing it.
-The installer then prints its detected distribution, exact package commands,
-app version, udev choice, and Background service choice before asking to
-continue. It supports automatic dependency installation on:
+The installer prints its detected distribution, exact package commands, app
+version, udev choice, and Background service choice before asking to continue.
+It reads confirmation from the terminal even though the script arrives on
+standard input. It supports automatic dependency installation on:
 
 - Ubuntu 22.04+, Debian 12+, Linux Mint, and compatible derivatives.
 - Fedora and compatible derivatives.
 - Arch Linux and compatible derivatives.
 
-For a shorter interactive form after you trust the versioned source URL:
+### Review and verify first
+
+To inspect the installer and verify it against the release manifest:
 
 ```bash
-curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-  https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.2/scripts/bootstrap.sh | bash
+(
+  set -e
+  directory="$(mktemp -d)"
+  trap 'rm -rf "$directory"' EXIT
+  base=https://github.com/callum-baillie/vaydeer-studio-linux/releases/latest/download
+  curl -fsSL "$base/install.sh" -o "$directory/install.sh"
+  curl -fsSL "$base/SHA256SUMS" -o "$directory/SHA256SUMS"
+  (cd "$directory" && grep '  install.sh$' SHA256SUMS | sha256sum --check -)
+  less "$directory/install.sh"
+  bash "$directory/install.sh"
+)
 ```
 
-The script reads confirmation from the terminal even when its source arrives on
-standard input. For unattended use, add `bash -s -- --yes` only after reviewing
-the plan and script.
+For unattended use, add `bash -s -- --yes` only after reviewing the plan and
+script. A pinned release uses
+`https://github.com/callum-baillie/vaydeer-studio-linux/releases/download/v1.1.0/install.sh`.
 
 ### What the bootstrap does
 
@@ -79,8 +76,8 @@ CLI, and Background service run as the desktop user.
 Pass options after `bash -s --` when piping:
 
 ```bash
-curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-  https://raw.githubusercontent.com/callum-baillie/vaydeer-studio-linux/v1.0.2/scripts/bootstrap.sh \
+curl -fsSL \
+  https://github.com/callum-baillie/vaydeer-studio-linux/releases/latest/download/install.sh \
   | bash -s -- --no-service
 ```
 
@@ -95,44 +92,39 @@ curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
 Options can be combined. Use `--no-service` for a non-systemd desktop session
 and `--no-udev` where device permissions are centrally administered.
 
-## Manual Installation
+## Build and Install from Source
 
 Install distribution libraries:
 
 ```bash
 # Ubuntu 22.04+, Debian 12+, Linux Mint
 sudo apt-get update
-sudo apt-get install -y ca-certificates curl libhidapi-hidraw0 libegl1 libgl1 \
+sudo apt-get install -y ca-certificates curl fontconfig libdbus-1-3 libglib2.0-0 libhidapi-hidraw0 libegl1 libgl1 \
   libxcb-cursor0 libxkbcommon-x11-0
 
 # Fedora
-sudo dnf install -y ca-certificates curl hidapi libglvnd-egl libglvnd-glx \
+sudo dnf install -y ca-certificates curl dbus-libs fontconfig glib2 hidapi libglvnd-egl libglvnd-glx \
   xcb-util-cursor libxkbcommon-x11
 
 # Arch Linux
-sudo pacman -S --needed ca-certificates curl hidapi mesa libglvnd \
+sudo pacman -S --needed ca-certificates curl dbus fontconfig glib2 hidapi mesa libglvnd \
   xcb-util-cursor libxkbcommon-x11
 ```
 
-Install the same pinned [uv](https://docs.astral.sh/uv/getting-started/installation/)
-release used by the bootstrap, then install from GitHub:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then clone,
+test, and run the application without touching host integration:
 
 ```bash
-(
-  set -e
-  uv_installer="$(mktemp)"
-  trap 'rm -f "$uv_installer"' EXIT
-  curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-    https://github.com/astral-sh/uv/releases/download/0.11.29/uv-installer.sh \
-    --output "$uv_installer"
-  printf '%s  %s\n' \
-    504a79fd2ed0dcd47e7f04f0792cfd0871f62e24a7fe40fa8ae0f563a369f2bd \
-    "$uv_installer" | sha256sum --check -
-  less "$uv_installer"
-  env UV_NO_MODIFY_PATH=1 sh "$uv_installer"
-)
 git clone https://github.com/callum-baillie/vaydeer-studio-linux.git
 cd vaydeer-studio-linux
+uv sync --extra dev
+make lint typecheck test
+uv run vaydeer-studio --mock jp1011
+```
+
+Install the tested checkout for the current user:
+
+```bash
 ./scripts/install.sh
 ```
 
@@ -144,7 +136,7 @@ The installer:
 3. Installs the desktop entry, icon, and profile MIME metadata under the XDG
    user data directory.
 4. Generates a systemd user unit with the actual installed daemon path, then
-   enables and starts it.
+   enables and starts or restarts it.
 5. Uses `sudo` only to install the scoped udev rule and reload udev.
 
 The application and service must not run as root.
@@ -194,17 +186,49 @@ group rule. Do not broaden access to every hidraw device.
 
 ## Update
 
-The bootstrap and source installers are idempotent. To update from a release,
-run the versioned installer shown in that release's README. To update from a
-checkout:
+The installer is idempotent. Rerun the same command to update to the latest
+release:
+
+```bash
+curl -fsSL https://github.com/callum-baillie/vaydeer-studio-linux/releases/latest/download/install.sh | bash
+```
+
+The isolated application environment and desktop files are replaced, and the
+Background service is restarted. Profiles, backups, preferences, and keypad
+mappings are preserved. No keypad mapping is written during an update.
+
+Use a versioned `releases/download/vX.Y.Z/install.sh` URL to pin or roll back.
+From a checkout:
 
 ```bash
 git pull --ff-only
 ./scripts/install.sh
 ```
 
-Reconnect the keypad only when the udev rule changed. A service-only update can
-be applied with `systemctl --user restart vaydeer-studio.service`.
+Reconnect the keypad only when the udev rule changed.
+
+## AppImage
+
+The supported x86_64 AppImage contains Python 3.11, PySide6, hidapi, and
+Vaydeer Studio. It is built as an AppDir with a checksum-pinned `appimagetool`
+and type-2 runtime, embeds GitHub zsync update information, and is validated with
+CLI and offscreen mock UI smoke tests.
+
+The bundle relies on the standard Fontconfig, D-Bus, GLib, OpenGL/EGL,
+XCB-cursor, and XKB libraries listed under **Build and Install from Source**.
+They are normally present on a Linux desktop and are installed explicitly by
+the one-line installer.
+
+```bash
+curl -fLO https://github.com/callum-baillie/vaydeer-studio-linux/releases/latest/download/Vaydeer_Studio-x86_64.AppImage
+chmod +x Vaydeer_Studio-x86_64.AppImage
+./Vaydeer_Studio-x86_64.AppImage
+```
+
+The bundle cannot install a host udev rule by itself. Without an existing rule,
+physical HID access remains unavailable. The **Setup** page can install a user
+service that points to the AppImage's stable filesystem location, so move the
+file to its final location before enabling that service.
 
 ## Uninstall
 
@@ -237,7 +261,11 @@ the platform's Qt user configuration location.
 
 ## Package Status
 
-`make package` builds and smoke-tests the wheel and source archive, then writes
-their hashes to `dist/SHA256SUMS`. These are the supported v1 release artifacts.
-Native AppImage, Debian, RPM, and Flatpak bundles are not released; see
-[../packaging/README.md](../packaging/README.md).
+`make package` builds and smoke-tests the wheel, source archive, and release
+installer. `make appimage` also builds and smoke-tests the x86_64 AppImage and
+zsync metadata. Every artifact is covered by `dist/SHA256SUMS`.
+
+Native Debian, RPM, Arch, and Flatpak packages are not released. They require
+separate distro-native dependency, upgrade, user-service, and udev testing; an
+untested package would be less reliable than the validated installer and
+AppImage. See [../packaging/README.md](../packaging/README.md).

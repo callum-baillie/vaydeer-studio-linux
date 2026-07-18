@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+appdir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+python="$appdir/usr/bin/python3.11"
+site_packages="$appdir/usr/lib/python3.11/site-packages"
+qt_root="$site_packages/PySide6/Qt"
+
+export PYTHONHOME="$appdir/usr"
+export PYTHONPATH="$site_packages"
+export PYTHONNOUSERSITE=1
+export LD_LIBRARY_PATH="$qt_root/lib:$appdir/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="$qt_root/plugins"
+export QML2_IMPORT_PATH="$qt_root/qml"
+
+case "${1:-}" in
+  --cli)
+    shift
+    exec "$python" -m vaydeer_studio.cli.main "$@"
+    ;;
+  --daemon)
+    shift
+    exec "$python" -m vaydeer_studio.service.daemon "$@"
+    ;;
+  *)
+    exec "$python" -m vaydeer_studio.ui.app "$@"
+    ;;
+esac

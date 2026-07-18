@@ -7,7 +7,7 @@ import sys
 from importlib.resources import files
 
 from PySide6.QtCore import QCoreApplication, QTimer, QUrl
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QGuiApplication, QIcon
 from PySide6.QtQml import QQmlApplicationEngine
 
 from vaydeer_studio import __version__
@@ -33,6 +33,9 @@ def main(argv: list[str] | None = None) -> int:
     QCoreApplication.setOrganizationDomain("vaydeer-studio.local")
     QCoreApplication.setApplicationName("Vaydeer Studio")
     application = QGuiApplication([sys.argv[0], *qt_args])
+    application.setDesktopFileName("io.github.callumbaillie.vaydeer-studio")
+    icon_path = files("vaydeer_studio.resources.icons").joinpath("vaydeer-studio.svg")
+    application.setWindowIcon(QIcon(str(icon_path)))
     engine = QQmlApplicationEngine()
     controller = StudioController(mock=args.mock == "jp1011")
     # Smoke validation must not resize the user's next real Studio window.

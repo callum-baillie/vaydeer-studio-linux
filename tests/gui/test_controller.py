@@ -399,7 +399,27 @@ def test_controller_reports_and_installs_host_local_user_service(monkeypatch, tm
 
     controller.installUserService()
     assert unit_path.exists()
-    assert "vaydeer_studio.service.daemon" in unit_path.read_text(encoding="utf-8")
+    unit = unit_path.read_text(encoding="utf-8")
+    assert "ExecStart=" in unit
+    assert "--log-level info" in unit
+
+
+def test_controller_installs_appimage_daemon_service(monkeypatch, tmp_path) -> None:
+    def fake_run(command, **_kwargs):
+        return CompletedProcess(command, 0, "", "")
+
+    appimage = tmp_path / "Vaydeer Studio.AppImage"
+    appimage.touch()
+    unit_path = tmp_path / "systemd" / "user" / "vaydeer-studio.service"
+    monkeypatch.setenv("APPIMAGE", str(appimage))
+    monkeypatch.setattr(controller_module.subprocess, "run", fake_run)
+    monkeypatch.setattr(StudioController, "_user_service_unit_path", staticmethod(lambda: unit_path))
+
+    controller = StudioController(mock=True)
+    controller.installUserService()
+
+    unit = unit_path.read_text(encoding="utf-8")
+    assert f"'{appimage}' --daemon --log-level info" in unit
 
 
 def test_controller_exposes_a_real_disconnected_state(monkeypatch) -> None:
