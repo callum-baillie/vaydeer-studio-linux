@@ -51,7 +51,8 @@ def test_release_scripts_stage_install_and_appimage_update_metadata() -> None:
     assert "AppImage update metadata was not generated" in appimage_script
     assert "APPIMAGE_RUNTIME_SHA256" in appimage_script
     assert '--runtime-file "$runtime"' in appimage_script
-    assert "uv python find --managed-python --no-project 3.11" in appimage_script
+    assert 'PYTHON_RUNTIME_VERSION="3.11.14"' in appimage_script
+    assert 'uv python install --install-dir "$python_install_dir" --no-bin' in appimage_script
     assert "! -name '.*'" in checksum_script
 
 

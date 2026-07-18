@@ -8,6 +8,7 @@ readonly APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/dow
 readonly APPIMAGETOOL_SHA256="a6d71e2b6cd66f8e8d16c37ad164658985e0cf5fcaa950c90a482890cb9d13e0"
 readonly APPIMAGE_RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"
 readonly APPIMAGE_RUNTIME_SHA256="1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf"
+readonly PYTHON_RUNTIME_VERSION="3.11.14"
 
 command -v uv >/dev/null 2>&1 || { echo "uv is required." >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || { echo "curl is required." >&2; exit 1; }
@@ -21,11 +22,13 @@ appdir="$build_dir/VaydeerStudio.AppDir"
 tool="$build_dir/appimagetool-x86_64.AppImage"
 runtime="$build_dir/runtime-x86_64"
 output="$root/dist/Vaydeer_Studio-x86_64.AppImage"
-python_bin="$(uv python find --managed-python --no-project 3.11 2>/dev/null || true)"
-if [[ -z "$python_bin" ]]; then
-  uv python install 3.11
-  python_bin="$(uv python find --managed-python --no-project 3.11)"
-fi
+python_install_dir="$build_dir/python-$PYTHON_RUNTIME_VERSION"
+uv python install --install-dir "$python_install_dir" --no-bin "$PYTHON_RUNTIME_VERSION"
+python_bin="$(
+  find "$python_install_dir" -mindepth 3 -maxdepth 3 -type f \
+    -path '*/bin/python3.11' -print -quit
+)"
+[[ -x "$python_bin" ]] || { echo "Could not locate the packaged Python runtime." >&2; exit 1; }
 python_root="$(CDPATH= cd -- "$(dirname -- "$python_bin")/.." && pwd)"
 
 rm -rf "$appdir"
